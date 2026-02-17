@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "AdmissionTimes",
+    "slug": "admissiontimes",
+    "version": "0.0.1",
+    "sdkVersion": "54.0.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.bankai_senbonzakura.admissiontimes"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "49a0e653-a0c9-481d-a9bb-6b6f02cb4ec0"
+      }
+    }
+  }
+}

@@ -1,0 +1,519 @@
+import { useState, useMemo } from 'react'
+import { ScrollView, Text, View, Pressable, TextInput, StyleSheet, Switch } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import type { StackNavigationProp } from '@react-navigation/stack'
+
+import type { RootStackParamList } from '../../navigation/AppNavigator'
+import { useAuth } from '../../contexts/AuthContext'
+import { useStudentData } from '../../contexts/StudentDataContext'
+import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
+import { Header } from '../../components/ui'
+
+export default function WatchlistScreen() {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
+  const { user, logout } = useAuth()
+  const { admissions, toggleSaved } = useStudentData()
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [degreeFilter, setDegreeFilter] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  const savedAdmissions = useMemo(() => {
+    return admissions.filter(a => a.saved)
+  }, [admissions])
+
+  const filteredAdmissions = useMemo(() => {
+    let filtered = [...savedAdmissions]
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(a =>
+        a.university.toLowerCase().includes(query) ||
+        a.program.toLowerCase().includes(query)
+      )
+    }
+
+    if (degreeFilter) {
+      filtered = filtered.filter(a => a.degreeType === degreeFilter)
+    }
+
+    return filtered
+  }, [savedAdmissions, searchQuery, degreeFilter])
+
+  const upcomingCount = useMemo(() => {
+    return savedAdmissions.filter(a => calculateDaysRemaining(a.deadline) <= 30).length
+  }, [savedAdmissions])
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
+  const handleCompare = () => {
+    if (selectedIds.length >= 2 && selectedIds.length <= 4) {
+      navigation.navigate('StudentCompare', { ids: selectedIds })
+    }
+  }
+
+  const handleRemove = (id: string) => {
+    toggleSaved(id)
+    setSelectedIds(prev => prev.filter(i => i !== id))
+  }
+
+  return (
+    <View style={styles.container}>
+      <Header
+        userName={user?.name || 'Student'}
+        userRole="Student"
+        notifications={0}
+        onNotificationPress={() => navigation.navigate('StudentNotifications')}
+        onLogout={logout}
+      />
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Header */}
+        <View style={styles.headerCard}>
+          <Text style={styles.headerTitle}>Saved Programs</Text>
+          <Pressable
+            style={[styles.compareButton, selectedIds.length < 2 && styles.compareButtonDisabled]}
+            onPress={handleCompare}
+            disabled={selectedIds.length < 2}
+          >
+            <Text style={styles.compareButtonText}>Compare ({selectedIds.length})</Text>
+          </Pressable>
+        </View>
+
+        {/* Search */}
+        <View style={styles.searchCard}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search saved programs..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+
+        {/* Filters */}
+        <View style={styles.filterRow}>
+          <View style={styles.filterChips}>
+            {['BS', 'MS', 'PhD', 'MBA'].map(deg => (
+              <Pressable
+                key={deg}
+                style={[styles.filterChip, degreeFilter === deg && styles.filterChipActive]}
+                onPress={() => setDegreeFilter(degreeFilter === deg ? '' : deg)}
+              >
+                <Text style={[styles.filterChipText, degreeFilter === deg && styles.filterChipTextActive]}>{deg}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Text style={styles.statLabel}>Total Saved</Text>
+              <Text style={styles.statValue}>{savedAdmissions.length}</Text>
+            </View>
+            <View style={[styles.statIcon, { backgroundColor: '#E0E7FF' }]}>
+              <Text style={styles.statIconText}>🔖</Text>
+            </View>
+          </View>
+          <View style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Text style={styles.statLabel}>Active Alerts</Text>
+              <Text style={styles.statValue}>{savedAdmissions.length}</Text>
+            </View>
+            <View style={[styles.statIcon, { backgroundColor: '#FEF3C7' }]}>
+              <Text style={styles.statIconText}>🔔</Text>
+            </View>
+          </View>
+          <View style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Text style={styles.statLabel}>Upcoming</Text>
+              <Text style={styles.statValue}>{upcomingCount}</Text>
+            </View>
+            <View style={[styles.statIcon, { backgroundColor: '#FEE2E2' }]}>
+              <Text style={styles.statIconText}>⏰</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Programs List */}
+        {filteredAdmissions.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>
+              {savedAdmissions.length === 0
+                ? 'No saved programs yet'
+                : 'No programs match your filters'}
+            </Text>
+            {savedAdmissions.length === 0 && (
+              <Pressable
+                style={styles.browseButton}
+                onPress={() => navigation.navigate('StudentSearch')}
+              >
+                <Text style={styles.browseButtonText}>Browse Programs</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          filteredAdmissions.map((admission) => {
+            const statusColors = getStatusColor(admission.status)
+            const isSelected = selectedIds.includes(admission.id)
+            const daysLeft = calculateDaysRemaining(admission.deadline)
+
+            return (
+              <View key={admission.id} style={styles.programCard}>
+                <View style={styles.programHeader}>
+                  <Pressable
+                    style={styles.checkbox}
+                    onPress={() => toggleSelection(admission.id)}
+                  >
+                    <View style={[styles.checkboxInner, isSelected && styles.checkboxActive]}>
+                      {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                  </Pressable>
+                  <View style={[styles.universityLogo, { backgroundColor: admission.logoBg }]}>
+                    <Text style={styles.universityLogoText}>
+                      {admission.university.substring(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.programInfo}>
+                    <Text style={styles.universityName} numberOfLines={1}>{admission.university}</Text>
+                    <Text style={styles.programName} numberOfLines={1}>{admission.program}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                    <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
+                      {admission.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.programDetails}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Degree:</Text>
+                    <Text style={styles.detailValue}>{admission.degree}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Fee:</Text>
+                    <Text style={styles.detailValue}>{admission.fee}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Deadline:</Text>
+                    <Text style={[styles.detailValue, daysLeft <= 7 && styles.urgentText]}>
+                      {admission.deadlineDisplay}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>City:</Text>
+                    <Text style={styles.detailValue}>{admission.city}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.programActions}>
+                  <View style={styles.alertRow}>
+                    <Text style={styles.alertText}>🔔 Deadline Alerts</Text>
+                    <Switch
+                      value={true}
+                      onValueChange={() => {}}
+                      trackColor={{ false: '#D1D5DB', true: '#2563EB' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  <View style={styles.actionButtons}>
+                    <Pressable
+                      style={styles.viewButton}
+                      onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
+                    >
+                      <Text style={styles.viewButtonText}>View Details</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.removeButton}
+                      onPress={() => handleRemove(admission.id)}
+                    >
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            )
+          })
+        )}
+      </ScrollView>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  content: {
+    padding: 16,
+  },
+  headerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  compareButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+  },
+  compareButtonDisabled: {
+    opacity: 0.5,
+  },
+  compareButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  searchInput: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  filterRow: {
+    marginBottom: 16,
+  },
+  filterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    margin: 4,
+  },
+  filterChipActive: {
+    backgroundColor: '#2563EB',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    marginHorizontal: -4,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    margin: 4,
+  },
+  statContent: {
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-end',
+  },
+  statIconText: {
+    fontSize: 20,
+  },
+  programCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  programHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  checkbox: {
+    padding: 4,
+    marginRight: 12,
+  },
+  checkboxInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  universityLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  universityLogoText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  programInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  universityName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  programName: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  programDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingTop: 12,
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  urgentText: {
+    color: '#EF4444',
+  },
+  programActions: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingTop: 12,
+  },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  alertText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    marginHorizontal: -4,
+  },
+  viewButton: {
+    flex: 1,
+    backgroundColor: '#2563EB',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 4,
+  },
+  viewButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  removeButton: {
+    flex: 1,
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 4,
+  },
+  removeButtonText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyState: {
+    padding: 48,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  browseButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+  },
+  browseButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+})
+
