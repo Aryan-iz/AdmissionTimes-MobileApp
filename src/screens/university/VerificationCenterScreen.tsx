@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { ScrollView, View, Text, TextInput, Pressable, StyleSheet, Modal } from 'react-native'
-import { useUniversityData } from '../../contexts/UniversityDataContext'
+import { useUniversityStore } from '../../store'
 import { AuditItem, AuditStatus } from '../../data/universityData'
 import { TitleHeader } from '../../components/ui'
 
@@ -17,7 +17,7 @@ export default function VerificationCenterScreen() {
   const [status, setStatus] = useState<"All" | AuditStatus>("All")
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<AuditItem | null>(null)
-  const { audits } = useUniversityData()
+  const audits = useUniversityStore(state => state.audits)
 
   const filtered = useMemo(() => {
     let list = audits

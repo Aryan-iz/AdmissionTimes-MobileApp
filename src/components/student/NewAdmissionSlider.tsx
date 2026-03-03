@@ -1,22 +1,55 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { View, Text, StyleSheet, Dimensions, Animated, Pressable } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import type { StudentAdmission } from '../../data/studentData'
+import { useStudentStore } from '../../store/studentStore'
 
 const { width } = Dimensions.get('window')
 const SLIDER_WIDTH = width - 32
 
 interface NewAdmissionSliderProps {
-  admissions: StudentAdmission[]
+  admissions?: StudentAdmission[] // Optional now - will fetch from store if not provided
 }
 
-export default function NewAdmissionSlider({ admissions }: NewAdmissionSliderProps) {
+export default function NewAdmissionSlider({ admissions: propAdmissions }: NewAdmissionSliderProps) {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const [currentIndex, setCurrentIndex] = useState(0)
   const fadeAnim = useRef(new Animated.Value(1)).current
   const slideAnim = useRef(new Animated.Value(0)).current
+  
+  // Get admissions from store
+  const storeAdmissions = useStudentStore(state => state.admissions)
+  
+  // Filter for new admissions: created within last 7 days or top 3 latest
+  const newAdmissions = useMemo(() => {
+    const source = propAdmissions || storeAdmissions
+    
+    if (!source || source.length === 0) return []
+    
+    // Parse updated dates and sort by most recent first
+    const withDates = source
+      .map(admission => ({
+        admission,
+        date: new Date(admission.updated || admission.deadline || 0).getTime()
+      }))
+      .sort((a, b) => b.date - a.date)
+    
+    // Check if any admissions are from the last 7 days
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000)
+    const recentAdmissions = withDates.filter(item => item.date >= sevenDaysAgo)
+    
+    // If we have recent admissions, show them (up to 3)
+    // Otherwise, show top 3 latest admissions
+    const filtered = recentAdmissions.length > 0 
+      ? recentAdmissions.slice(0, 3) 
+      : withDates.slice(0, 3)
+    
+    return filtered.map(item => item.admission)
+  }, [propAdmissions, storeAdmissions])
+  
+  const admissions = newAdmissions
 
   useEffect(() => {
     if (admissions.length <= 1) return

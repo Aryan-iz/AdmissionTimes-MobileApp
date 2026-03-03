@@ -5,15 +5,17 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
-import { useAuth } from '../../contexts/AuthContext'
-import { useStudentData } from '../../contexts/StudentDataContext'
+import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 
 export default function SearchAdmissionsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
-  const { admissions, toggleSaved } = useStudentData()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
+  const admissions = useStudentStore(state => state.admissions)
+  const savedIds = useStudentStore(state => state.savedAdmissions)
+  const toggleSaved = useStudentStore(state => state.toggleSaved)
   
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filtersVisible, setFiltersVisible] = useState(false)
@@ -23,8 +25,6 @@ export default function SearchAdmissionsScreen() {
   const [selectedStatus, setSelectedStatus] = useState<string[]>([])
   const [compareIds, setCompareIds] = useState<string[]>([])
   const [isLoadingResults, setIsLoadingResults] = useState(false)
-
-  const savedIds = useMemo(() => admissions.filter(a => a.saved).map(a => a.id), [admissions])
 
   const universities = useMemo(() => {
     return Array.from(new Set(admissions.map(a => a.university))).sort()
@@ -103,7 +103,7 @@ export default function SearchAdmissionsScreen() {
         userRole="Student"
         notifications={0}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
-        onLogout={logout}
+        onLogout={signOut}
       />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Search Bar */}

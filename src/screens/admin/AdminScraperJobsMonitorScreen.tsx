@@ -10,11 +10,12 @@ import {
   getScraperJobStatusColor,
   type ScraperJob,
 } from '../../data/adminData'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 
 export default function AdminScraperJobsMonitorScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
 
   const handleRunAll = () => {
     Alert.alert(
@@ -50,7 +51,7 @@ export default function AdminScraperJobsMonitorScreen() {
         userName={user?.name || 'Admin User'}
         userRole="Admin"
         notifications={0}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>

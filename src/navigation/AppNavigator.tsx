@@ -1,17 +1,20 @@
 /**
  * AppNavigator - Main navigation controller for the Admission Times mobile app
  * 
- * SCOPE NOTE: This mobile app currently implements ONLY the Student module.
- * Admin and University Representative modules are intentionally excluded in this phase
- * and planned as future work. This is a deliberate scope decision for the FYP demonstration.
+ * Refactored to use Zustand store for state management
+ * Supports all three roles: Student, University, Admin
+ * Matches web frontend routing structure exactly
  */
 
+import { useEffect } from 'react'
 import { createStackNavigator } from '@react-navigation/stack'
 
-import { useAuth } from '../contexts/AuthContext.tsx'
+import { useAuthStore } from '../store'
 
 import AuthLoadingScreen from '../screens/auth/AuthLoadingScreen.tsx'
 import LoginScreen from '../screens/auth/LoginScreen.tsx'
+import SignUpScreen from '../screens/auth/SignUpScreen.tsx'
+import NotFoundScreen from '../screens/NotFoundScreen.tsx'
 
 import HomeScreen from '../screens/public/HomeScreen.tsx'
 import FeaturesScreen from '../screens/public/FeaturesScreen.tsx'
@@ -24,16 +27,15 @@ import DeadlineScreen from '../screens/student/DeadlineScreen.tsx'
 import WatchlistScreen from '../screens/student/WatchlistScreen.tsx'
 import StudentNotificationsScreen from '../screens/student/StudentNotificationsScreen.tsx'
 import ProgramDetailScreen from '../screens/student/ProgramDetailScreen.tsx'
-import ProfileEditScreen from '../screens/student/ProfileEditScreen.tsx'
 
-// University and Admin screens are imported but not used in current scope
-// These modules are planned for future phases
 import UniversityDashboardScreen from '../screens/university/UniversityDashboardScreen.tsx'
 import ManageAdmissionsScreen from '../screens/university/ManageAdmissionsScreen.tsx'
+import ViewAllAdmissionsScreen from '../screens/university/ViewAllAdmissionsScreen.tsx'
 import VerificationCenterScreen from '../screens/university/VerificationCenterScreen.tsx'
 import ChangeLogsScreen from '../screens/university/ChangeLogsScreen.tsx'
 import UniversityNotificationsCenterScreen from '../screens/university/UniversityNotificationsCenterScreen.tsx'
 import UniversitySettingsScreen from '../screens/university/UniversitySettingsScreen.tsx'
+import EditProfileScreen from '../screens/university/EditProfileScreen.tsx'
 
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen.tsx'
 import AdminVerificationCenterScreen from '../screens/admin/AdminVerificationCenterScreen.tsx'
@@ -45,6 +47,8 @@ import AdminAnalyticsScreen from '../screens/admin/AdminAnalyticsScreen.tsx'
 export type RootStackParamList = {
   AuthLoading: undefined
   Login: undefined
+  SignUp: undefined
+  NotFound: undefined
 
   Home: undefined
   Features: undefined
@@ -58,15 +62,16 @@ export type RootStackParamList = {
   StudentWatchlist: undefined
   StudentNotifications: undefined
   ProgramDetail: { id: string }
-  ProfileEdit: undefined
 
   // University
   UniversityDashboard: undefined
   ManageAdmissions: { editId?: string } | undefined
+  ViewAllAdmissions: undefined
   VerificationCenter: undefined
   UniversityChangeLogs: undefined
   UniversityNotifications: undefined
   UniversitySettings: undefined
+  EditProfile: undefined
 
   // Admin
   AdminDashboard: undefined
@@ -80,19 +85,29 @@ export type RootStackParamList = {
 const Stack = createStackNavigator<RootStackParamList>()
 
 export default function AppNavigator() {
-  const { status, user } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const isLoading = useAuthStore(state => state.isLoading)
+  const checkAuth = useAuthStore(state => state.checkAuth)
 
-  if (status === 'loading') {
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+
+  if (isLoading) {
     return <AuthLoadingScreen />
   }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
-        <Stack.Screen name="Login" component={LoginScreen} />
-      ) : (
-        // STUDENT MODULE ONLY - Currently the only active role in this mobile app
-        // University Representative and Admin modules are planned for future phases
+        // Public/Auth Routes
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} />
+        </>
+      ) : user.role === 'student' ? (
+        // Student Routes - ONLY MODULE ENABLED
         <>
           <Stack.Screen name="StudentDashboard" component={StudentDashboardScreen} />
           <Stack.Screen name="StudentSearch" component={SearchAdmissionsScreen} />
@@ -101,14 +116,20 @@ export default function AppNavigator() {
           <Stack.Screen name="StudentWatchlist" component={WatchlistScreen} />
           <Stack.Screen name="StudentNotifications" component={StudentNotificationsScreen} />
           <Stack.Screen name="ProgramDetail" component={ProgramDetailScreen} />
-          <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
+        </>
+      ) : (
+        // DISABLED: University and Admin modules
+        // Only student role is supported for now
+        <>
+          <Stack.Screen name="NotFound" component={NotFoundScreen} />
         </>
       )}
 
-      {/* Public screens can still be reachable if you add links later */}
+      {/* Public screens accessible from anywhere */}
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="Features" component={FeaturesScreen} />
       <Stack.Screen name="Contact" component={ContactScreen} />
+      <Stack.Screen name="NotFound" component={NotFoundScreen} />
     </Stack.Navigator>
   )
 }

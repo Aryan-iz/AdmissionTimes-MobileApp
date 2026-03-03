@@ -3,7 +3,7 @@ import { ScrollView, View, Text, Pressable, StyleSheet, Linking, Alert } from 'r
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useStudentData } from '../../contexts/StudentDataContext'
+import { useStudentStore } from '../../store'
 import { calculateDaysRemaining } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 import { ReminderModal } from '../../components/student'
@@ -17,7 +17,11 @@ export default function ProgramDetailScreen() {
   const [activeTab, setActiveTab] = useState<'Overview' | 'Important Dates'>('Overview')
   const [isLoading, setIsLoading] = useState(true)
   const [reminderModalVisible, setReminderModalVisible] = useState(false)
-  const { getAdmissionById, admissions, toggleAlert } = useStudentData()
+  const admissions = useStudentStore(state => state.admissions)
+  const toggleAlert = useStudentStore(state => state.toggleAlert)
+  
+  // Helper to get admission by ID
+  const getAdmissionById = (id: string) => admissions.find(a => a.id === id)
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 600)

@@ -4,16 +4,17 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
-import { useUniversityData } from '../../contexts/UniversityDataContext'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore, useUniversityStore } from '../../store'
 import { getStatusColor } from '../../data/universityData'
 import { screenStyles } from '../../utils/screenStyles'
 import { Header } from '../../components/ui'
 
 export default function UniversityDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { admissions, deleteAdmission } = useUniversityData()
-  const { user, logout } = useAuth()
+  const admissions = useUniversityStore(state => state.admissions)
+  const deleteAdmission = useUniversityStore(state => state.deleteAdmission)
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
   const [statusFilter, setStatusFilter] = useState<string>('All')
 
   // Calculate stats
@@ -52,7 +53,7 @@ export default function UniversityDashboardScreen() {
         userName={user?.name || 'University User'}
         userRole="University"
         notifications={0}
-        onLogout={logout}
+        onLogout={signOut}
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
       {/* Header */}

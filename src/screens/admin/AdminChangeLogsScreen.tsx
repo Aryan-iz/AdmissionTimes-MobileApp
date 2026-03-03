@@ -5,11 +5,12 @@ import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
 import { Header } from '../../components/ui'
 import { adminChangeLogs, type AdminChangeLog } from '../../data/adminData'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 
 export default function AdminChangeLogsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
   
   const [changeTypeFilter, setChangeTypeFilter] = useState<string>('All')
   const [searchQuery, setSearchQuery] = useState('')
@@ -58,7 +59,7 @@ export default function AdminChangeLogsScreen() {
         userName={user?.name || 'Admin User'}
         userRole="Admin"
         notifications={0}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>

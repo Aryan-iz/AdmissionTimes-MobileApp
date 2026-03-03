@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { ScrollView, View, Text, TextInput, Pressable, StyleSheet, Modal } from 'react-native'
-import { useUniversityData } from '../../contexts/UniversityDataContext'
+import { useUniversityStore } from '../../store'
 import { ChangeLogItem } from '../../data/universityData'
 import { TitleHeader } from '../../components/ui'
 
 export default function ChangeLogsScreen() {
-  const { changeLogs, admissions } = useUniversityData()
+  const changeLogs = useUniversityStore(state => state.changeLogs)
+  const admissions = useUniversityStore(state => state.admissions)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [admission, setAdmission] = useState('All')

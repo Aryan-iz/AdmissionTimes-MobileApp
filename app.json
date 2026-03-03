@@ -27,7 +27,11 @@
     "extra": {
       "eas": {
         "projectId": "49a0e653-a0c9-481d-a9bb-6b6f02cb4ec0"
-      }
+      },
+      "API_BASE_URL": "http://10.102.139.20:3000/api/v1",
+      "SUPABASE_URL": "https://lufhgsgubvxjrrcsevte.supabase.co",
+      "SUPABASE_ANON_KEY": "sb_publishable_RzAA52ZFGw9LV2piNWd4bA_3wVwdbDP",
+      "DEBUG_API": "false"
     }
   }
 }

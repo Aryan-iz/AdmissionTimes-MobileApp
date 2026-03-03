@@ -3,7 +3,7 @@ import { ScrollView, View, Text, TextInput, Pressable, StyleSheet, Alert, Activi
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useUniversityData } from '../../contexts/UniversityDataContext'
+import { useUniversityStore } from '../../store'
 import { getStatusColor, Admission } from '../../data/universityData'
 import { TitleHeader } from '../../components/ui'
 import * as DocumentPicker from 'expo-document-picker'
@@ -18,7 +18,9 @@ type UploadedFile = {
 
 export default function ManageAdmissionsScreen() {
   const navigation = useNavigation<ManageAdmissionsNavigationProp>()
-  const { admissions, createOrUpdateAdmission, deleteAdmission } = useUniversityData()
+  const admissions = useUniversityStore(state => state.admissions)
+  const createOrUpdateAdmission = useUniversityStore(state => state.createOrUpdateAdmission)
+  const deleteAdmission = useUniversityStore(state => state.deleteAdmission)
 
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)

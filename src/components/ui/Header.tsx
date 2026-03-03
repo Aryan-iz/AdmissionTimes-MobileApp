@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native'
-import { useAuth } from '../../contexts/AuthContext'
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
@@ -21,15 +20,12 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false)
-  const { logout } = useAuth()
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
 
   const handleLogout = () => {
     setIsProfileOpen(false)
     if (onLogout) {
       onLogout()
-    } else {
-      logout()
     }
   }
 
