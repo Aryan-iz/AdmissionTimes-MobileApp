@@ -11,11 +11,12 @@ import {
   type AnalyticsEventType,
   type AnalyticsEvent,
 } from '../../data/adminData'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 
 export default function AdminAnalyticsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
   
   const [userFilter, setUserFilter] = useState<string>('All')
   const [eventTypeFilter, setEventTypeFilter] = useState<AnalyticsEventType | 'All'>('All')
@@ -94,7 +95,7 @@ export default function AdminAnalyticsScreen() {
         userName={user?.name || 'Admin User'}
         userRole="Admin"
         notifications={0}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>

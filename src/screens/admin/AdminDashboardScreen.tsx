@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 import {
   pendingVerifications,
   recentAdminActions,
@@ -27,7 +27,8 @@ import {
 
 export default function AdminDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
 
   const displayPendingVerifications = useMemo(() => pendingVerifications.slice(0, 5), [])
   const displayRecentActions = useMemo(() => recentAdminActions.slice(0, 5), [])
@@ -41,7 +42,7 @@ export default function AdminDashboardScreen() {
         userRole="Admin"
         notifications={adminNotifications.length}
         onNotificationPress={() => navigation.navigate('AdminNotifications')}
-        onLogout={logout}
+        onLogout={signOut}
       />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
       {/* System Metrics */}

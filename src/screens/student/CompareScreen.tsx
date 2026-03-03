@@ -3,7 +3,7 @@ import { ScrollView, View, Text, Pressable, StyleSheet, Linking } from 'react-na
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useStudentData } from '../../contexts/StudentDataContext'
+import { useStudentStore } from '../../store'
 import { getStatusColor, StudentAdmission } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 
@@ -82,8 +82,18 @@ const CompareCard = ({ admission, onViewDetails }: { admission: StudentAdmission
 export default function CompareScreen() {
   const route = useRoute<CompareScreenRouteProp>()
   const navigation = useNavigation<CompareScreenNavigationProp>()
-  const { getAdmissionById, savedAdmissions } = useStudentData()
+  const admissions = useStudentStore(state => state.admissions)
+  const savedIds = useStudentStore(state => state.savedAdmissions)
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Helper to get admission by ID
+  const getAdmissionById = (id: string) => admissions.find(a => a.id === id)
+  
+  // Compute saved admissions from IDs
+  const savedAdmissions = useMemo(
+    () => admissions.filter(a => savedIds.includes(a.id)),
+    [admissions, savedIds]
+  )
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 700)

@@ -5,9 +5,8 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator.tsx'
-import { useStudentData } from '../../contexts/StudentDataContext'
-import { useAuth } from '../../contexts/AuthContext'
-import { calculateDaysRemaining, getStatusColor, isAdmissionActive, getNewAdmissions, type StudentAdmission } from '../../data/studentData'
+import { useAuthStore, useStudentStore } from '../../store'
+import { calculateDaysRemaining, getStatusColor, isAdmissionActive, type StudentAdmission } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { AiAssistantButton, ChatModal } from '../../components/ai'
 import { NewAdmissionSlider } from '../../components/student'
@@ -15,16 +14,44 @@ import { useAi } from '../../contexts/AiContext'
 
 export default function StudentDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { admissions, savedAdmissions, notifications } = useStudentData()
-  const { user, logout } = useAuth()
+  const admissions = useStudentStore(state => state.admissions)
+  const savedAdmissionsIds = useStudentStore(state => state.savedAdmissions)
+  const notifications = useStudentStore(state => state.notifications)
+  const loading = useStudentStore(state => state.loading)
+  const fetchDashboardData = useStudentStore(state => state.fetchDashboardData)
+  const user = useAuthStore(state => state.user)
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
+  const signOut = useAuthStore(state => state.signOut)
   const { setContext } = useAi()
+  
+  // Compute saved admissions from IDs
+  const savedAdmissions = useMemo(
+    () => admissions.filter(a => savedAdmissionsIds.includes(a.id)),
+    [admissions, savedAdmissionsIds]
+  )
   const [isLoading, setIsLoading] = useState(true)
 
-  // Simulate initial data loading
+  // Fetch dashboard data when user is authenticated
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800)
-    return () => clearTimeout(timer)
-  }, [])
+    console.log('📊 [StudentDashboard] useEffect triggered')
+    console.log('   - User:', user?.name)
+    console.log('   - Authenticated:', isAuthenticated)
+    console.log('   - Loading:', loading)
+    
+    if (isAuthenticated && user) {
+      console.log('✅ [StudentDashboard] User authenticated, fetching dashboard data...')
+      fetchDashboardData().then(() => {
+        console.log('✅ [StudentDashboard] Dashboard data fetch completed')
+        setIsLoading(false)
+      }).catch((err) => {
+        console.error('❌ [StudentDashboard] Dashboard data fetch failed:', err)
+        setIsLoading(false)
+      })
+    } else {
+      console.log('⚠️ [StudentDashboard] User not authenticated, skipping fetch')
+      setIsLoading(false)
+    }
+  }, [isAuthenticated, user, fetchDashboardData])
 
   // Set AI context
   useMemo(() => {
@@ -52,8 +79,6 @@ export default function StudentDashboardScreen() {
       urgent,
     }
   }, [admissions, savedAdmissions])
-
-  const newAdmissions = useMemo(() => getNewAdmissions(), [admissions])
 
   const upcomingDeadlines = useMemo(() => {
     return admissions
@@ -100,13 +125,11 @@ export default function StudentDashboardScreen() {
         userRole="Student"
         notifications={notifications.filter(n => !n.read).length}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
-      {/* New Admission Slider */}
-      {newAdmissions.length > 0 && !isLoading && (
-        <NewAdmissionSlider admissions={newAdmissions} />
-      )}
+      {/* New Admission Slider - Fetches data from store automatically */}
+      {!isLoading && <NewAdmissionSlider />}
       
       {isLoading ? (
         <View style={styles.loadingContainer}>

@@ -5,15 +5,17 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
-import { useAuth } from '../../contexts/AuthContext'
-import { useStudentData } from '../../contexts/StudentDataContext'
+import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 
 export default function WatchlistScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
-  const { admissions, toggleSaved } = useStudentData()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
+  const admissions = useStudentStore(state => state.admissions)
+  const savedIds = useStudentStore(state => state.savedAdmissions)
+  const toggleSaved = useStudentStore(state => state.toggleSaved)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [cityFilter, setCityFilter] = useState('')
@@ -21,8 +23,8 @@ export default function WatchlistScreen() {
   const [isLoadingResults, setIsLoadingResults] = useState(false)
 
   const savedAdmissions = useMemo(() => {
-    return admissions.filter(a => a.saved)
-  }, [admissions])
+    return admissions.filter(a => savedIds.includes(a.id))
+  }, [admissions, savedIds])
 
   const cities = useMemo(() => {
     return Array.from(new Set(savedAdmissions.map(a => a.city).filter(Boolean))).sort()
@@ -76,7 +78,7 @@ export default function WatchlistScreen() {
         userRole="Student"
         notifications={0}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
-        onLogout={logout}
+        onLogout={signOut}
       />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Header */}

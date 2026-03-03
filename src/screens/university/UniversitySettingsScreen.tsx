@@ -3,14 +3,14 @@ import { ScrollView, View, Text, TextInput, Pressable, StyleSheet, Alert, Switch
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 import { TitleHeader } from '../../components/ui'
 
 type UniversitySettingsNavigationProp = StackNavigationProp<RootStackParamList, 'UniversitySettings'>
 
 export default function UniversitySettingsScreen() {
   const navigation = useNavigation<UniversitySettingsNavigationProp>()
-  const { logout } = useAuth()
+  const signOut = useAuthStore(state => state.signOut)
   const [universityName, setUniversityName] = useState('National University of Sciences & Technology')
   const [contactEmail, setContactEmail] = useState('admissions@nust.edu.pk')
   const [contactPhone, setContactPhone] = useState('+92-51-9085-5555')
@@ -78,7 +78,7 @@ export default function UniversitySettingsScreen() {
         { 
           text: 'Logout', 
           style: 'destructive',
-          onPress: () => logout()
+          onPress: () => signOut()
         }
       ]
     )

@@ -5,14 +5,17 @@ import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
 import { StudentNotification } from '../../data/studentData'
-import { useStudentData } from '../../contexts/StudentDataContext'
+import { useStudentStore } from '../../store'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 
 type StudentNotificationsNavigationProp = StackNavigationProp<RootStackParamList, 'StudentNotifications'>
 
 export default function StudentNotificationsScreen() {
   const navigation = useNavigation<StudentNotificationsNavigationProp>()
-  const { notifications, markNotificationRead, markAllNotificationsRead, refreshNotifications } = useStudentData()
+  const notifications = useStudentStore(state => state.notifications)
+  const markNotificationRead = useStudentStore(state => state.markNotificationRead)
+  const markAllNotificationsRead = useStudentStore(state => state.markAllNotificationsRead)
+  const refreshNotifications = useStudentStore(state => state.refreshNotifications)
   const [activeTab, setActiveTab] = useState<'All' | 'alert' | 'admission'>('All')
   const [isLoading, setIsLoading] = useState(true)
 

@@ -11,11 +11,12 @@ import {
   type VerificationItem,
   type VerificationStatus,
 } from '../../data/adminData'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 
 export default function AdminVerificationCenterScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
   
   const [statusFilter, setStatusFilter] = useState<VerificationStatus | 'All'>('All')
   const [universityFilter, setUniversityFilter] = useState<string>('All')
@@ -91,7 +92,7 @@ export default function AdminVerificationCenterScreen() {
         userName={user?.name || 'Admin User'}
         userRole="Admin"
         notifications={0}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>

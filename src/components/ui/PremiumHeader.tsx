@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { View, Text, StyleSheet, Pressable, Modal, Platform, Image, StatusBar } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
-import { useAuth } from '../../contexts/AuthContext'
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
@@ -23,7 +22,6 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
   onLogout,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false)
-  const { logout } = useAuth()
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
 
   // Force status bar configuration on every screen focus
@@ -41,8 +39,6 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
     setIsProfileOpen(false)
     if (onLogout) {
       onLogout()
-    } else {
-      logout()
     }
   }
 

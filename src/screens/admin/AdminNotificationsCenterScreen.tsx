@@ -5,11 +5,12 @@ import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
 import { Header } from '../../components/ui'
 import { adminNotifications, type NotificationType } from '../../data/adminData'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuthStore } from '../../store'
 
 export default function AdminNotificationsCenterScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { user, logout } = useAuth()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
 
   const [activeTab, setActiveTab] = useState<NotificationType | 'All'>('All')
   const [unreadOnly, setUnreadOnly] = useState(false)
@@ -82,7 +83,7 @@ export default function AdminNotificationsCenterScreen() {
         userName={user?.name || 'Admin User'}
         userRole="Admin"
         notifications={unreadCount}
-        onLogout={logout}
+        onLogout={signOut}
       />
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>

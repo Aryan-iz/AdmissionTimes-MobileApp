@@ -2,9 +2,11 @@
  * Admission Times Mobile App
  * React Native (Expo) + TypeScript
  * 
- * SCOPE: This mobile application implements the STUDENT MODULE only.
- * Admin and University Representative modules are intentionally excluded in this phase
- * and planned as future work. This is a deliberate scope decision for the FYP demonstration.
+ * STATE MANAGEMENT: Uses Zustand for centralized state management
+ * - Auth: useAuthStore
+ * - Student Data: useStudentStore
+ * 
+ * SCOPE: STUDENT MODULE ONLY (University and Admin modules disabled)
  * 
  * FEATURES (Student Module):
  * - Authentication (Student access only)
@@ -25,9 +27,6 @@ import { View, StatusBar, AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useEffect, useRef } from 'react'
 
-import { AuthProvider } from './src/contexts/AuthContext.tsx'
-import { StudentDataProvider } from './src/contexts/StudentDataContext.tsx'
-import { UniversityDataProvider } from './src/contexts/UniversityDataContext.tsx'
 import { AiProvider } from './src/contexts/AiContext.tsx'
 import AppNavigator from './src/navigation/AppNavigator.tsx'
 
@@ -69,17 +68,11 @@ export default function App() {
           backgroundColor="#FFFFFF"
           translucent={false}
         />
-        <AuthProvider>
-          <StudentDataProvider>
-            <UniversityDataProvider>
-              <AiProvider>
-                <NavigationContainer>
-                  <AppNavigator />
-                </NavigationContainer>
-              </AiProvider>
-            </UniversityDataProvider>
-          </StudentDataProvider>
-        </AuthProvider>
+        <AiProvider>
+          <NavigationContainer>
+            <AppNavigator />
+          </NavigationContainer>
+        </AiProvider>
       </View>
     </SafeAreaProvider>
   )
