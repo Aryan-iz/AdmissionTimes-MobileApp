@@ -14,6 +14,13 @@ export { admissionsService } from './admissionsService';
 export { watchlistsService } from './watchlistsService';
 export { notificationsService } from './notificationsService';
 export { deadlinesService } from './deadlinesService';
+export {
+	setupNotificationChannel,
+	registerForPushNotifications,
+	addForegroundNotificationListener,
+	addNotificationResponseListener,
+	showLocalNotification,
+} from './pushNotifications';
 
 // Export types
 export * from './types';

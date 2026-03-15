@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { ScrollView, Text, View, Pressable, TextInput, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
+import { Feather } from '@expo/vector-icons'
 
 export default function WatchlistScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -15,7 +16,9 @@ export default function WatchlistScreen() {
   const signOut = useAuthStore(state => state.signOut)
   const admissions = useStudentStore(state => state.admissions)
   const savedIds = useStudentStore(state => state.savedAdmissions)
+  const notifications = useStudentStore(state => state.notifications)
   const toggleSaved = useStudentStore(state => state.toggleSaved)
+  const toggleAlert = useStudentStore(state => state.toggleAlert)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [cityFilter, setCityFilter] = useState('')
@@ -31,7 +34,6 @@ export default function WatchlistScreen() {
   }, [savedAdmissions])
 
   const filteredAdmissions = useMemo(() => {
-    setIsLoadingResults(true)
     let filtered = [...savedAdmissions]
 
     if (searchQuery.trim()) {
@@ -46,9 +48,14 @@ export default function WatchlistScreen() {
       filtered = filtered.filter(a => a.city === cityFilter)
     }
 
-    setTimeout(() => setIsLoadingResults(false), 300)
     return filtered
   }, [savedAdmissions, searchQuery, cityFilter])
+
+  useEffect(() => {
+    setIsLoadingResults(true)
+    const timer = setTimeout(() => setIsLoadingResults(false), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery, cityFilter, savedAdmissions.length])
 
   const upcomingCount = useMemo(() => {
     return savedAdmissions.filter(a => calculateDaysRemaining(a.deadline) <= 30).length
@@ -76,7 +83,7 @@ export default function WatchlistScreen() {
       <PremiumHeader
         userName={user?.name || 'Student'}
         userRole="Student"
-        notifications={0}
+        notifications={notifications.filter(n => !n.read).length}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
         onLogout={signOut}
       />
@@ -95,13 +102,16 @@ export default function WatchlistScreen() {
 
         {/* Search */}
         <View style={styles.searchCard}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search saved programs..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor="#9CA3AF"
-          />
+          <View style={styles.searchInputRow}>
+            <Feather name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search saved programs..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
         </View>
 
         {/* Filters */}
@@ -134,16 +144,16 @@ export default function WatchlistScreen() {
               <Text style={styles.statValue}>{savedAdmissions.length}</Text>
             </View>
             <View style={[styles.statIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Text style={styles.statIconText}>🔖</Text>
+              <Feather name="bookmark" size={18} color="#2563EB" />
             </View>
           </View>
           <View style={styles.statCard}>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Active Alerts</Text>
-              <Text style={styles.statValue}>{savedAdmissions.length}</Text>
+              <Text style={styles.statValue}>{savedAdmissions.filter(a => a.alertEnabled).length}</Text>
             </View>
             <View style={[styles.statIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Text style={styles.statIconText}>🔔</Text>
+              <Feather name="bell" size={18} color="#B45309" />
             </View>
           </View>
           <View style={styles.statCard}>
@@ -152,7 +162,7 @@ export default function WatchlistScreen() {
               <Text style={styles.statValue}>{upcomingCount}</Text>
             </View>
             <View style={[styles.statIcon, { backgroundColor: '#FEE2E2' }]}>
-              <Text style={styles.statIconText}>⏰</Text>
+              <Feather name="clock" size={18} color="#EF4444" />
             </View>
           </View>
         </View>
@@ -217,10 +227,6 @@ export default function WatchlistScreen() {
                     <Text style={styles.detailValue}>{admission.degree}</Text>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Fee:</Text>
-                    <Text style={styles.detailValue}>{admission.fee}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Deadline:</Text>
                     <Text style={[styles.detailValue, daysLeft <= 7 && styles.urgentText]}>
                       {admission.deadlineDisplay}
@@ -234,10 +240,13 @@ export default function WatchlistScreen() {
 
                 <View style={styles.programActions}>
                   <View style={styles.alertRow}>
-                    <Text style={styles.alertText}>🔔 Deadline Alerts</Text>
+                    <View style={styles.alertLabelRow}>
+                      <Feather name="bell" size={14} color="#374151" />
+                      <Text style={styles.alertText}>Deadline Alerts</Text>
+                    </View>
                     <Switch
-                      value={true}
-                      onValueChange={() => {}}
+                      value={admission.alertEnabled === true}
+                      onValueChange={() => toggleAlert(admission.id)}
                       trackColor={{ false: '#D1D5DB', true: '#2563EB' }}
                       thumbColor="#FFFFFF"
                     />
@@ -302,17 +311,31 @@ const styles = StyleSheet.create({
   searchCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  searchInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchInput: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 14,
     color: '#111827',
+    paddingVertical: 2,
   },
   filterRow: {
     marginBottom: 16,
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
   },
   filterChips: {
     flexDirection: 'row',
@@ -372,8 +395,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'flex-end',
   },
-  statIconText: {
-    fontSize: 20,
+  alertLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   programCard: {
     backgroundColor: '#FFFFFF',

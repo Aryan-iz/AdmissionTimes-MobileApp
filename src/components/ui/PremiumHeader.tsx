@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, Pressable, Modal, Platform, Image, StatusBar } from 'react-native'
+import React, { useState } from 'react'
+import { View, Text, StyleSheet, Pressable, Modal, Platform, StatusBar } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
+import { Feather } from '@expo/vector-icons'
+import { theme } from '../../theme'
+import BrandMark from './BrandMark'
 
 interface PremiumHeaderProps {
   userName?: string
@@ -29,7 +32,7 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
     React.useCallback(() => {
       StatusBar.setBarStyle('dark-content')
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor('#FFFFFF')
+        StatusBar.setBackgroundColor(theme.colors.surface)
         StatusBar.setTranslucent(false)
       }
     }, [])
@@ -55,7 +58,7 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
     <SafeAreaView style={styles.headerWrapper} edges={['top']}>
       <StatusBar 
         barStyle="dark-content" 
-        backgroundColor="#FFFFFF"
+        backgroundColor={theme.colors.surface}
         translucent={false}
       />
       <View style={styles.gradientContainer}>
@@ -68,11 +71,7 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
           >
             {/* AT Logo */}
             <View style={styles.logoContainer}>
-              <Image 
-                source={require('../../../assets/logo.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
+              <BrandMark size={32} />
             </View>
             
             {/* App Title */}
@@ -90,11 +89,7 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
               onPress={onNotificationPress || (() => navigation.navigate('StudentNotifications'))}
             >
               <View style={styles.bellContainer}>
-                {/* Bell Icon */}
-                <View style={styles.bellIconWrapper}>
-                  <View style={styles.bellTop} />
-                  <View style={styles.bellBody} />
-                </View>
+                <Feather name="bell" size={18} color={theme.colors.textMuted} />
                 
                 {/* Glowing cyan status dot */}
                 {notifications > 0 && (
@@ -156,18 +151,18 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
 
               <View style={styles.dropdownDivider} />
 
-              {/* Edit Profile Option */}
+              {/* Dashboard Option */}
               <Pressable 
                 style={styles.dropdownItem} 
                 onPress={() => {
                   setIsProfileOpen(false)
-                  navigation.navigate('ProfileEdit')
+                  navigation.navigate('StudentDashboard')
                 }}
               >
                 <View style={styles.dropdownItemIcon}>
-                  <Text style={styles.dropdownItemIconText}>✏️</Text>
+                  <Feather name="home" size={16} color={theme.colors.primary} />
                 </View>
-                <Text style={styles.dropdownItemText}>Edit Profile</Text>
+                <Text style={styles.dropdownItemText}>Dashboard</Text>
               </Pressable>
 
               <View style={styles.dropdownDivider} />
@@ -175,7 +170,7 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
               {/* Sign Out */}
               <Pressable style={styles.dropdownItemDanger} onPress={handleLogout}>
                 <View style={styles.dropdownItemIconDanger}>
-                  <Text style={styles.dropdownItemIconTextDanger}>⎋</Text>
+                  <Feather name="log-out" size={16} color={theme.colors.danger} />
                 </View>
                 <Text style={styles.dropdownItemTextDanger}>Sign Out</Text>
               </Pressable>
@@ -190,9 +185,9 @@ export const PremiumHeader: React.FC<PremiumHeaderProps> = ({
 const styles = StyleSheet.create({
   headerWrapper: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: theme.colors.border,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -209,7 +204,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
   },
   headerContent: {
     flexDirection: 'row',
@@ -220,35 +215,38 @@ const styles = StyleSheet.create({
   
   // Left Section - Logo
   logoSection: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    minWidth: 0,
   },
   logoContainer: {
-    width: 44,
-    height: 44,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  logoImage: {
-    width: 44,
-    height: 44,
+    flexShrink: 0,
   },
   titleContainer: {
     justifyContent: 'center',
+    flex: 1,
+    minWidth: 0,
   },
   appTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: theme.colors.text,
     letterSpacing: -0.5,
     marginBottom: 2,
+    flexShrink: 1,
   },
   appSubtitle: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#6B7280',
+    color: theme.colors.textMuted,
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
 
   // Right Section - Icons & Avatar
@@ -256,6 +254,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginLeft: 12,
+    flexShrink: 0,
   },
   iconButton: {
     width: 40,
@@ -263,41 +263,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.colors.bg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
   },
   
   // Bell Icon
   bellContainer: {
     position: 'relative',
-  },
-  bellIconWrapper: {
-    width: 20,
-    height: 20,
-    position: 'relative',
-  },
-  bellTop: {
-    position: 'absolute',
-    top: 0,
-    left: 7,
-    width: 6,
-    height: 3,
-    backgroundColor: '#6B7280',
-    borderTopLeftRadius: 3,
-    borderTopRightRadius: 3,
-  },
-  bellBody: {
-    position: 'absolute',
-    top: 3,
-    left: 2,
-    width: 16,
-    height: 14,
-    backgroundColor: '#6B7280',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2,
   },
   cyanDotContainer: {
     position: 'absolute',
@@ -309,16 +282,16 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#06B6D4',
+    backgroundColor: theme.colors.info,
     opacity: 0.4,
   },
   cyanDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#06B6D4',
+    backgroundColor: theme.colors.info,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: theme.colors.surface,
   },
 
   // Avatar
@@ -330,9 +303,9 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     padding: 2,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
   },
   avatar: {
     width: '100%',
@@ -345,7 +318,7 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    backgroundColor: theme.colors.primary,
   },
   avatarText: {
     fontSize: 14,
@@ -366,7 +339,7 @@ const styles = StyleSheet.create({
     width: 280,
   },
   dropdown: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     overflow: 'hidden',
     ...Platform.select({
@@ -385,7 +358,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.bg,
   },
   dropdownAvatarRing: {
     width: 52,
@@ -417,7 +390,7 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    backgroundColor: theme.colors.primary,
   },
   dropdownAvatarText: {
     fontSize: 18,
@@ -431,7 +404,7 @@ const styles = StyleSheet.create({
   dropdownUserName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: theme.colors.text,
     marginBottom: 4,
   },
   dropdownRoleContainer: {
@@ -443,16 +416,16 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: theme.colors.success,
   },
   dropdownUserRole: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#6B7280',
+    color: theme.colors.textMuted,
   },
   dropdownDivider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: theme.colors.border,
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -464,24 +437,21 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  dropdownItemIconText: {
-    fontSize: 16,
   },
   dropdownItemText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#374151',
+    color: theme.colors.text,
   },
   dropdownItemDanger: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     gap: 12,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: theme.colors.dangerBg,
   },
   dropdownItemIconDanger: {
     width: 36,
@@ -491,13 +461,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dropdownItemIconTextDanger: {
-    fontSize: 16,
-    color: '#DC2626',
-  },
   dropdownItemTextDanger: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#DC2626',
+    color: theme.colors.danger,
   },
 })

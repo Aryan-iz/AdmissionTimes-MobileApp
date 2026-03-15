@@ -10,39 +10,83 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { config } from '../config/env';
 
-/**
- * Custom async storage adapter for React Native
- * Supabase requires this for session persistence
- */
-const AsyncStorageAdapter = {
+const SECURESTORE_MAX_SAFE_BYTES = 2000;
+const LARGE_VALUE_POINTER_PREFIX = '__ASYNC__:';
+
+const SecureStorageAdapter = {
   getItem: async (key: string) => {
-    return await AsyncStorage.getItem(key);
+    try {
+      const secureValue = await SecureStore.getItemAsync(key);
+
+      if (secureValue?.startsWith(LARGE_VALUE_POINTER_PREFIX)) {
+        const pointerKey = secureValue.replace(LARGE_VALUE_POINTER_PREFIX, '');
+        return await AsyncStorage.getItem(pointerKey);
+      }
+
+      if (secureValue !== null) {
+        return secureValue;
+      }
+
+      return await AsyncStorage.getItem(key);
+    } catch {
+      return await AsyncStorage.getItem(key);
+    }
   },
   setItem: async (key: string, value: string) => {
-    await AsyncStorage.setItem(key, value);
+    const asyncPointerKey = `${key}:async`;
+
+    try {
+      const valueSize = value.length;
+
+      if (valueSize > SECURESTORE_MAX_SAFE_BYTES) {
+        await AsyncStorage.setItem(asyncPointerKey, value);
+        await SecureStore.setItemAsync(key, `${LARGE_VALUE_POINTER_PREFIX}${asyncPointerKey}`);
+        return;
+      }
+
+      await SecureStore.setItemAsync(key, value);
+      await AsyncStorage.removeItem(asyncPointerKey);
+    } catch {
+      await AsyncStorage.setItem(key, value);
+    }
   },
   removeItem: async (key: string) => {
-    await AsyncStorage.removeItem(key);
+    const asyncPointerKey = `${key}:async`;
+
+    try {
+      await SecureStore.deleteItemAsync(key);
+      await AsyncStorage.removeItem(asyncPointerKey);
+    } catch {
+      await AsyncStorage.removeItem(key);
+      await AsyncStorage.removeItem(asyncPointerKey);
+    }
   },
 };
 
 /**
  * Initialize Supabase client with React Native storage
  */
-export const supabase: SupabaseClient = createClient(
-  config.supabaseUrl,
-  config.supabaseAnonKey,
-  {
+const supabaseGlobal = globalThis as typeof globalThis & {
+  __admissionTimesSupabaseClient?: SupabaseClient;
+};
+
+export const supabase: SupabaseClient =
+  supabaseGlobal.__admissionTimesSupabaseClient ||
+  createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: {
-      storage: AsyncStorageAdapter,
+      storage: SecureStorageAdapter,
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: false, // Not needed for mobile
+      detectSessionInUrl: false,
     },
-  }
-);
+  });
+
+if (!supabaseGlobal.__admissionTimesSupabaseClient) {
+  supabaseGlobal.__admissionTimesSupabaseClient = supabase;
+}
 
 /**
  * Get current session with JWT token
@@ -79,7 +123,6 @@ export const getAccessToken = async (): Promise<string | null> => {
     
     if (config.debugApi && __DEV__) {
       console.log('🔐 [Supabase] Access token retrieved');
-      console.log('  Token prefix:', token.substring(0, 20) + '...');
       console.log('  Expires at:', new Date(data.session.expires_at! * 1000).toISOString());
     }
     
@@ -119,7 +162,6 @@ export const getSupabaseUser = async () => {
  */
 export const signOutUser = async () => {
   try {
-    console.log('🔐 [Supabase] Signing out user...');
     const { error } = await supabase.auth.signOut();
     
     if (error) {
@@ -127,7 +169,9 @@ export const signOutUser = async () => {
       throw error;
     }
     
-    console.log('✅ [Supabase] User signed out successfully');
+    if (config.debugApi && __DEV__) {
+      console.log('✅ [Supabase] User signed out successfully');
+    }
   } catch (error: any) {
     console.error('❌ [Supabase] Error during sign out:', error);
     throw error;

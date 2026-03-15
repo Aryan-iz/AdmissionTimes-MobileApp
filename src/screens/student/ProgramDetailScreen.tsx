@@ -7,6 +7,7 @@ import { useStudentStore } from '../../store'
 import { calculateDaysRemaining } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 import { ReminderModal } from '../../components/student'
+import { Feather } from '@expo/vector-icons'
 
 type ProgramDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProgramDetail'>
 type ProgramDetailScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProgramDetail'>
@@ -55,7 +56,7 @@ export default function ProgramDetailScreen() {
       <View style={styles.container}>
         <TitleHeader title="Program Details" />
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>❌</Text>
+          <Feather name="alert-circle" size={56} color="#EF4444" style={styles.errorIcon} />
           <Text style={styles.errorText}>Program not found</Text>
           <Pressable 
             style={styles.errorButton}
@@ -80,12 +81,19 @@ export default function ProgramDetailScreen() {
   const statusColors = getStatusColor(program.programStatus)
   const daysRemaining = calculateDaysRemaining(program.deadline)
 
-  const handleApplyNow = () => {
-    if (program.officialUrl) {
-      Linking.openURL(program.officialUrl)
-    } else {
-      Alert.alert('Apply Now', 'Please contact the university directly to apply for this program.')
+  const handleApplyNow = async () => {
+    if (!program.officialUrl) {
+      Alert.alert('Apply Now', 'Official application link is not available for this program yet.')
+      return
     }
+
+    const canOpen = await Linking.canOpenURL(program.officialUrl)
+    if (!canOpen) {
+      Alert.alert('Apply Now', 'Unable to open the official application link on this device.')
+      return
+    }
+
+    await Linking.openURL(program.officialUrl)
   }
 
   const handleCompare = () => {
@@ -96,14 +104,14 @@ export default function ProgramDetailScreen() {
     setReminderModalVisible(true)
   }
 
-  const handleConfirmReminder = (days: number, note: string) => {
-    // Enable the alert for this program
-    if (program) {
-      toggleAlert(program.id)
+  const handleConfirmReminder = async () => {
+    if (!program.alertEnabled) {
+      await toggleAlert(program.id)
     }
+
     Alert.alert(
-      'Reminder Set! 🔔',
-      `You will be reminded ${days} day(s) before the deadline.${note ? `\n\nNote: ${note}` : ''}`,
+      'Reminder Enabled',
+      'This admission has been saved and deadline alerts are now enabled.',
       [{ text: 'OK', style: 'default' }]
     )
   }
@@ -121,7 +129,7 @@ export default function ProgramDetailScreen() {
             
             <View style={styles.headerMeta}>
               <View style={styles.locationContainer}>
-                <Text style={styles.locationIcon}>📍</Text>
+                <Feather name="map-pin" size={16} color="#6B7280" style={styles.locationIcon} />
                 <Text style={styles.locationText}>{program.location}</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
@@ -133,15 +141,24 @@ export default function ProgramDetailScreen() {
 
             <View style={styles.actionButtons}>
               <Pressable style={styles.actionButtonSecondary} onPress={handleCompare}>
-                <Text style={styles.actionButtonSecondaryText}>↔️ Compare</Text>
+                <View style={styles.secondaryButtonContent}>
+                  <Feather name="shuffle" size={14} color="#374151" />
+                  <Text style={styles.actionButtonSecondaryText}>Compare</Text>
+                </View>
               </Pressable>
               <Pressable style={styles.actionButtonSecondary} onPress={handleSetReminder}>
-                <Text style={styles.actionButtonSecondaryText}>🔔 Reminder</Text>
+                <View style={styles.secondaryButtonContent}>
+                  <Feather name="bell" size={14} color="#374151" />
+                  <Text style={styles.actionButtonSecondaryText}>Reminder</Text>
+                </View>
               </Pressable>
             </View>
 
             <Pressable style={styles.applyButton} onPress={handleApplyNow}>
-              <Text style={styles.applyButtonText}>✓ Apply Now</Text>
+              <View style={styles.applyButtonContent}>
+                <Feather name="check" size={14} color="#FFFFFF" />
+                <Text style={styles.applyButtonText}>Apply Now</Text>
+              </View>
             </Pressable>
 
             <Text style={styles.lastUpdated}>Last Updated: {program.updated}</Text>
@@ -232,7 +249,7 @@ export default function ProgramDetailScreen() {
                 style={styles.officialLinkButton}
                 onPress={() => Linking.openURL(program.officialUrl!)}
               >
-                <Text style={styles.officialLinkButtonIcon}>🌐</Text>
+                <Feather name="globe" size={16} color="#FFFFFF" style={styles.officialLinkButtonIcon} />
                 <Text style={styles.officialLinkButtonText}>Visit Official Website</Text>
               </Pressable>
             ) : (
@@ -308,7 +325,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   locationIcon: {
-    fontSize: 16,
     marginRight: 8,
   },
   locationText: {
@@ -337,6 +353,11 @@ const styles = StyleSheet.create({
     marginRight: 8,
     alignItems: 'center',
   },
+  secondaryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   actionButtonSecondaryText: {
     fontSize: 14,
     fontWeight: '500',
@@ -348,6 +369,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  applyButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   applyButtonText: {
     fontSize: 14,
@@ -487,7 +513,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   officialLinkButtonIcon: {
-    fontSize: 16,
     marginRight: 8,
   },
   officialLinkButtonText: {
@@ -512,7 +537,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorIcon: {
-    fontSize: 64,
     marginBottom: 16,
   },
   errorText: {

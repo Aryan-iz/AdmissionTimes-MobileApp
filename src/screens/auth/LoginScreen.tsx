@@ -10,34 +10,33 @@ import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-nativ
 
 import { useAuthStore, useStudentStore } from '../../store'
 import { screenStyles } from '../../utils/screenStyles'
+import { BrandMark } from '../../components/ui'
 
 export default function LoginScreen() {
   const signIn = useAuthStore(state => state.signIn)
   const isLoading = useAuthStore(state => state.isLoading)
   const fetchDashboardData = useStudentStore(state => state.fetchDashboardData)
   
-  const [email, setEmail] = useState('imandullah.tdm@gmail.com')
-  const [password, setPassword] = useState('dev123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   const onSubmit = async () => {
     if (isLoading) return
+
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing Information', 'Please enter both email and password.')
+      return
+    }
     
     try {
-      console.log('=== Sign In Debug ===')
-      console.log('Attempting login...')
-      
       await signIn(
-        { email, password },
+        { email: email.trim(), password },
         {
           onSuccess: async (user) => {
-            console.log('Login successful:', user)
-            
             // Load data based on role
             if (user.role === 'student') {
-              console.log('Loading student data...')
               await fetchDashboardData()
-              console.log('Student data loaded successfully')
             }
             // Navigation is handled by AppNavigator reacting to auth state
           },
@@ -58,6 +57,13 @@ export default function LoginScreen() {
       <Text style={screenStyles.title}>Login</Text>
 
       <View style={screenStyles.card}>
+        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <BrandMark size={28} />
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827' }}>AdmissionTimes</Text>
+          </View>
+        </View>
+
         <Text>Email</Text>
         <TextInput
           value={email}
@@ -107,9 +113,6 @@ export default function LoginScreen() {
         </Pressable>
 
         <View style={{ height: 12 }} />
-
-        <Text style={screenStyles.muted}>Default credentials:</Text>
-        <Text style={screenStyles.muted}>imandullah.tdm@gmail.com / dev123</Text>
       </View>
     </ScrollView>
   )

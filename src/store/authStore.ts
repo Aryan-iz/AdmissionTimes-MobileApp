@@ -67,6 +67,15 @@ interface AuthStoreState {
 }
 
 const STORAGE_KEY = 'admissiontimes.auth.user'
+const AUTH_CHECK_THROTTLE_MS = 15000
+const STUDENT_ONLY_MESSAGE = 'This mobile app currently supports student accounts only.'
+
+let checkAuthInFlight: Promise<void> | null = null
+let lastCheckAuthAt = 0
+
+const authStoreGlobal = globalThis as typeof globalThis & {
+  __admissionTimesAuthStateUnsubscribe?: (() => void) | null
+}
 
 /**
  * Convert backend User to AuthUser for compatibility
@@ -84,6 +93,15 @@ const convertToAuthUser = (user: User): AuthUser => {
   }
 }
 
+const assertStudentRole = async (user: AuthUser) => {
+  if (user.role !== 'student') {
+    await signOutUser().catch(() => {})
+    throw new Error(STUDENT_ONLY_MESSAGE)
+  }
+
+  return user
+}
+
 const initialState = {
   user: null,
   isAuthenticated: false,
@@ -97,8 +115,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
 
   // Check Authentication (on app start)  
   checkAuth: async () => {
+    if (checkAuthInFlight) {
+      return checkAuthInFlight
+    }
+
+    const runCheck = async () => {
     try {
       set({ isLoading: true, error: null })
+      lastCheckAuthAt = Date.now()
 
       console.log('🔐 [authStore] Checking authentication...')
 
@@ -115,7 +139,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         // Get current user from backend using JWT
         const response = await authService.getCurrentUser()
         const backendUser = response.data
-        const authUser = convertToAuthUser(backendUser)
+        const authUser = await assertStudentRole(convertToAuthUser(backendUser))
 
         console.log('✅ [authStore] User authenticated:', authUser.email)
 
@@ -130,10 +154,34 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       }
     } catch (error: any) {
       console.error('❌ [authStore] Auth check failed:', error)
-      set({ user: null, isAuthenticated: false })
-      await AsyncStorage.removeItem(STORAGE_KEY)
+
+      const isNetworkError =
+        error?.code === 'ECONNABORTED' ||
+        error?.message?.toLowerCase?.().includes('timeout') ||
+        (!!error?.request && !error?.response)
+
+      if (isNetworkError) {
+        const currentUser = get().user
+        set({
+          user: currentUser,
+          isAuthenticated: !!currentUser,
+          error: 'Backend is unreachable. Please verify backend host/network and try again.',
+        })
+      } else {
+        set({ user: null, isAuthenticated: false })
+        await AsyncStorage.removeItem(STORAGE_KEY)
+      }
     } finally {
       set({ isLoading: false })
+    }
+    }
+
+    checkAuthInFlight = runCheck()
+
+    try {
+      await checkAuthInFlight
+    } finally {
+      checkAuthInFlight = null
     }
   },
 
@@ -165,7 +213,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       // Fetch user from backend
       const response = await authService.getCurrentUser()
       const backendUser = response.data
-      const authUser = convertToAuthUser(backendUser)
+      const authUser = await assertStudentRole(convertToAuthUser(backendUser))
 
       console.log('✅ [authStore] User data received:', authUser.email, '- Role:', authUser.role)
 
@@ -196,6 +244,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
   signUp: async (data, options) => {
     try {
       set({ isLoading: true, error: null })
+
+      if (data.user_type !== 'student') {
+        throw new Error(STUDENT_ONLY_MESSAGE)
+      }
 
       console.log('🔐 [authStore] Signing up user:', data.email)
 
@@ -301,7 +353,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       
       const response = await authService.getCurrentUser()
       const backendUser = response.data
-      const authUser = convertToAuthUser(backendUser)
+      const authUser = await assertStudentRole(convertToAuthUser(backendUser))
 
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))
       set({ user: authUser })
@@ -319,15 +371,22 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
   },
 }))
 
-// Listen for Supabase auth state changes
-// This ensures the store stays in sync with Supabase auth state
-onAuthStateChange((event, session) => {
+if (authStoreGlobal.__admissionTimesAuthStateUnsubscribe) {
+  authStoreGlobal.__admissionTimesAuthStateUnsubscribe()
+}
+
+authStoreGlobal.__admissionTimesAuthStateUnsubscribe = onAuthStateChange((event) => {
   console.log('🔐 [authStore] Supabase auth state changed:', event)
-  
+
+  const now = Date.now()
+  const shouldSkipThrottledCheck = now - lastCheckAuthAt < AUTH_CHECK_THROTTLE_MS
+
   if (event === 'SIGNED_OUT') {
     useAuthStore.getState().setUser(null)
-  } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-    // Refresh user data when signed in or token refreshed
+  } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+    if (shouldSkipThrottledCheck) {
+      return
+    }
     useAuthStore.getState().checkAuth()
   }
 })

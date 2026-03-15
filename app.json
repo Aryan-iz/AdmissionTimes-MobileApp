@@ -4,6 +4,7 @@
     "slug": "admissiontimes",
     "version": "0.0.1",
     "sdkVersion": "54.0.0",
+    "icon": "./assets/logo.png",
     "platforms": [
       "ios",
       "android",
@@ -19,19 +20,30 @@
       "package": "com.bankai_senbonzakura.admissiontimes"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.svg",
+      "themeColor": "#2563EB",
+      "backgroundColor": "#F9FAFB"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo.png",
+          "color": "#2563EB"
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "49a0e653-a0c9-481d-a9bb-6b6f02cb4ec0"
       },
-      "API_BASE_URL": "http://10.102.139.20:3000/api/v1",
       "SUPABASE_URL": "https://lufhgsgubvxjrrcsevte.supabase.co",
       "SUPABASE_ANON_KEY": "sb_publishable_RzAA52ZFGw9LV2piNWd4bA_3wVwdbDP",
-      "DEBUG_API": "false"
+      "DEBUG_API": "false",
+      "ENABLE_REALTIME": "true",
+      "ENABLE_PUSH_NOTIFICATIONS": "true"
     }
   }
 }

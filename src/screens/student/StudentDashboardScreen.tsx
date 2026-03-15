@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useEffect } from 'react'
 import { ScrollView, Text, View, Pressable, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -11,6 +11,7 @@ import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { AiAssistantButton, ChatModal } from '../../components/ai'
 import { NewAdmissionSlider } from '../../components/student'
 import { useAi } from '../../contexts/AiContext'
+import { Feather } from '@expo/vector-icons'
 
 export default function StudentDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -29,34 +30,19 @@ export default function StudentDashboardScreen() {
     () => admissions.filter(a => savedAdmissionsIds.includes(a.id)),
     [admissions, savedAdmissionsIds]
   )
-  const [isLoading, setIsLoading] = useState(true)
-
   // Fetch dashboard data when user is authenticated
   useEffect(() => {
-    console.log('📊 [StudentDashboard] useEffect triggered')
-    console.log('   - User:', user?.name)
-    console.log('   - Authenticated:', isAuthenticated)
-    console.log('   - Loading:', loading)
-    
     if (isAuthenticated && user) {
-      console.log('✅ [StudentDashboard] User authenticated, fetching dashboard data...')
-      fetchDashboardData().then(() => {
-        console.log('✅ [StudentDashboard] Dashboard data fetch completed')
-        setIsLoading(false)
-      }).catch((err) => {
+      fetchDashboardData().catch((err) => {
         console.error('❌ [StudentDashboard] Dashboard data fetch failed:', err)
-        setIsLoading(false)
       })
-    } else {
-      console.log('⚠️ [StudentDashboard] User not authenticated, skipping fetch')
-      setIsLoading(false)
     }
-  }, [isAuthenticated, user, fetchDashboardData])
+  }, [fetchDashboardData, isAuthenticated, user])
 
   // Set AI context
-  useMemo(() => {
+  useEffect(() => {
     setContext('Student Dashboard')
-  }, [])
+  }, [setContext])
 
   const stats = useMemo(() => {
     // Active admissions: current date is between start and end date
@@ -72,12 +58,14 @@ export default function StudentDashboardScreen() {
       return daysRemaining >= 0 && daysRemaining <= 7
     }).length
 
-    return {
+    const computed = {
       active: activeAdmissions.length,
       saved: savedAdmissions.length,
       upcoming,
       urgent,
     }
+
+    return computed
   }, [admissions, savedAdmissions])
 
   const upcomingDeadlines = useMemo(() => {
@@ -85,11 +73,18 @@ export default function StudentDashboardScreen() {
       .filter((a) => {
         const daysRemaining = calculateDaysRemaining(a.deadline)
         // Only show deadlines for active admissions that are upcoming (not past)
-        return isAdmissionActive(a) && daysRemaining >= 0 && daysRemaining <= 30
+        return a.programStatus !== 'Closed' && daysRemaining >= 0 && daysRemaining <= 30
       })
       .map((a) => ({ ...a, daysRemaining: calculateDaysRemaining(a.deadline) }))
       .sort((a, b) => a.daysRemaining - b.daysRemaining)
       .slice(0, 3)
+  }, [admissions])
+
+  const recommendedAdmissions = useMemo(() => {
+    return admissions
+      .filter((a) => a.programStatus !== 'Closed')
+      .filter((a) => (a.matchNumeric || 0) >= 75)
+      .sort((a, b) => (b.matchNumeric || 0) - (a.matchNumeric || 0))
   }, [admissions])
 
   const recentActivities = useMemo(() => {
@@ -121,7 +116,7 @@ export default function StudentDashboardScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
       <PremiumHeader
-        userName={user?.name || 'Aryan'}
+        userName={user?.name || user?.display_name || 'Student'}
         userRole="Student"
         notifications={notifications.filter(n => !n.read).length}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
@@ -129,9 +124,9 @@ export default function StudentDashboardScreen() {
       />
       
       {/* New Admission Slider - Fetches data from store automatically */}
-      {!isLoading && <NewAdmissionSlider />}
+      {!loading && <NewAdmissionSlider />}
       
-      {isLoading ? (
+      {loading ? (
         <View style={styles.loadingContainer}>
           <CustomLoader size={60} color="#2563EB" />
           <Text style={styles.loadingText}>Loading your dashboard...</Text>
@@ -149,52 +144,67 @@ export default function StudentDashboardScreen() {
               style={styles.heroPrimaryButton}
               onPress={() => navigation.navigate('StudentSearch')}
             >
-              <Text style={styles.heroPrimaryButtonText}>🔍 Search Admissions</Text>
+              <View style={styles.heroButtonContent}>
+                <Feather name="search" size={14} color="#2563EB" />
+                <Text style={styles.heroPrimaryButtonText}>Search Admissions</Text>
+              </View>
             </Pressable>
             <Pressable
               style={styles.heroSecondaryButton}
               onPress={() => navigation.navigate('StudentDeadlines')}
             >
-              <Text style={styles.heroSecondaryButtonText}>View Deadlines</Text>
+              <View style={styles.heroButtonContent}>
+                <Feather name="calendar" size={14} color="#FFFFFF" />
+                <Text style={styles.heroSecondaryButtonText}>View Deadlines</Text>
+              </View>
             </Pressable>
           </View>
         </View>
 
         {/* Stats Cards Grid */}
         <View style={styles.statsGrid}>
-          {/* Active Admissions */}
           <Pressable 
             style={styles.statsCard}
             onPress={() => navigation.navigate('StudentSearch')}
           >
             <View style={[styles.statsIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Text style={{ fontSize: 20 }}>🎓</Text>
+              <Feather name="book-open" size={18} color="#2563EB" />
             </View>
             <Text style={styles.statsLabel}>Active Admissions</Text>
             <Text style={styles.statsValue}>{stats.active}</Text>
             <Text style={styles.statsSubtext}>Open & Closing Soon</Text>
           </Pressable>
 
-          {/* Saved Programs */}
+          <Pressable 
+            style={styles.statsCard}
+            onPress={() => navigation.navigate('StudentSearch')}
+          >
+            <View style={[styles.statsIcon, { backgroundColor: '#DBEAFE' }]}>
+              <Feather name="star" size={18} color="#2563EB" />
+            </View>
+            <Text style={styles.statsLabel}>Recommendations</Text>
+            <Text style={styles.statsValue}>{recommendedAdmissions.length}</Text>
+            <Text style={styles.statsSubtext}>Matched programs</Text>
+          </Pressable>
+
           <Pressable 
             style={styles.statsCard}
             onPress={() => navigation.navigate('StudentWatchlist')}
           >
             <View style={[styles.statsIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Text style={{ fontSize: 20 }}>📑</Text>
+              <Feather name="bookmark" size={18} color="#2563EB" />
             </View>
             <Text style={styles.statsLabel}>Saved Programs</Text>
             <Text style={styles.statsValue}>{stats.saved}</Text>
             <Text style={styles.statsSubtext}>View watchlist</Text>
           </Pressable>
 
-          {/* Upcoming Deadlines */}
           <Pressable 
             style={styles.statsCard}
             onPress={() => navigation.navigate('StudentDeadlines')}
           >
             <View style={[styles.statsIcon, { backgroundColor: stats.urgent > 0 ? '#FEE2E2' : '#FEF3C7' }]}>
-              <Text style={{ fontSize: 20 }}>📅</Text>
+              <Feather name="calendar" size={18} color={stats.urgent > 0 ? '#EF4444' : '#B45309'} />
             </View>
             <Text style={styles.statsLabel}>Upcoming Deadlines</Text>
             <Text style={styles.statsValue}>{stats.upcoming}</Text>
@@ -208,6 +218,36 @@ export default function StudentDashboardScreen() {
         <View style={styles.mainGrid}>
           {/* Quick Access Sections */}
           <View style={styles.sidebarColumn}>
+            {/* Recommendations Card */}
+            <View style={styles.sidebarCard}>
+              <View style={styles.sidebarCardHeader}>
+                <Text style={styles.sidebarCardTitle}>Recommendations</Text>
+                <Pressable onPress={() => navigation.navigate('StudentSearch')}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </Pressable>
+              </View>
+              <View style={styles.deadlinesList}>
+                {recommendedAdmissions.length === 0 ? (
+                  <Text style={styles.mutedText}>No recommendations available</Text>
+                ) : (
+                  recommendedAdmissions.slice(0, 3).map((admission) => {
+                    const match = Math.round(admission.matchNumeric || 0)
+                    return (
+                      <View key={admission.id} style={styles.recommendationItem}>
+                        <View style={styles.recommendationBadge}>
+                          <Text style={styles.recommendationBadgeText}>{match}%</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.deadlineUniversity}>{admission.university}</Text>
+                          <Text style={styles.deadlineProgram}>{admission.program}</Text>
+                        </View>
+                      </View>
+                    )
+                  })
+                )}
+              </View>
+            </View>
+
             {/* Upcoming Deadlines Card */}
             <View style={styles.sidebarCard}>
               <View style={styles.sidebarCardHeader}>
@@ -221,16 +261,26 @@ export default function StudentDashboardScreen() {
                   <Text style={styles.mutedText}>No upcoming deadlines</Text>
                 ) : (
                   upcomingDeadlines.map((admission) => {
-                    const color = admission.daysRemaining <= 3 ? '#EF4444' : admission.daysRemaining <= 7 ? '#FACC15' : '#10B981'
+                    const days = admission.daysRemaining
+                    const color = days <= 3 ? '#EF4444' : days <= 7 ? '#F59E0B' : '#10B981'
+                    const bgColor = days <= 3 ? '#FEE2E2' : days <= 7 ? '#FEF3C7' : '#D1FAE5'
+                    const daysLabel =
+                      days <= 0 ? 'Today'
+                      : days === 1 ? 'Tomorrow'
+                      : `${days}d left`
+                    const shortDate = new Date(admission.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                     return (
                       <View key={admission.id} style={styles.deadlineItem}>
                         <View style={[styles.deadlineDot, { backgroundColor: color }]} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.deadlineUniversity}>{admission.university}</Text>
-                          <Text style={styles.deadlineProgram}>{admission.program}</Text>
-                          <Text style={[styles.deadlineDays, { color }]}>
-                            {admission.daysRemaining < 0 ? 'Deadline passed' : `Deadline in ${admission.daysRemaining} days`}
-                          </Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.deadlineUniversity} numberOfLines={1}>{admission.university}</Text>
+                          <Text style={styles.deadlineProgram} numberOfLines={1}>{admission.program}</Text>
+                        </View>
+                        <View style={styles.deadlineBadge}>
+                          <Text style={[styles.deadlineBadgeDate, { color }]}>{shortDate}</Text>
+                          <View style={[styles.deadlineBadgePill, { backgroundColor: bgColor }]}>
+                            <Text style={[styles.deadlineBadgePillText, { color }]}>{daysLabel}</Text>
+                          </View>
                         </View>
                       </View>
                     )
@@ -254,7 +304,7 @@ export default function StudentDashboardScreen() {
                   recentActivities.map((activity, idx) => (
                     <View key={idx} style={styles.activityItem}>
                       <View style={styles.activityIcon}>
-                        <Text style={{ fontSize: 16 }}>📌</Text>
+                        <Feather name="bell" size={14} color="#2563EB" />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.activityText}>{activity.action}</Text>
@@ -317,6 +367,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: -6,
   },
+  heroButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   heroPrimaryButton: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -349,19 +404,18 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    marginHorizontal: -6,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginBottom: 24,
+    gap: 12,
   },
   statsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 20,
-    flex: 1,
-    minWidth: '45%',
+    padding: 16,
+    width: '48%',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginHorizontal: 6,
-    marginBottom: 12
   },
   statsIcon: {
     width: 48,
@@ -377,7 +431,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statsValue: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#111827',
     marginBottom: 4,
@@ -496,30 +550,65 @@ const styles = StyleSheet.create({
   },
   deadlineItem: {
     flexDirection: 'row',
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 8,
   },
   deadlineDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginTop: 6,
-    marginRight: 12,
+    flexShrink: 0,
   },
   deadlineUniversity: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   deadlineProgram: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
-    marginBottom: 2,
   },
-  deadlineDays: {
-    fontSize: 12,
+  deadlineBadge: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  deadlineBadgeDate: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  deadlineBadgePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  deadlineBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   activityList: {
+  },
+  recommendationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  recommendationBadge: {
+    minWidth: 42,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  recommendationBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   activityItem: {
     flexDirection: 'row',

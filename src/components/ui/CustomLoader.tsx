@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { View, Animated, StyleSheet, Easing } from 'react-native'
+import { theme } from '../../theme'
 
 interface CustomLoaderProps {
   size?: number
   color?: string
 }
 
-export default function CustomLoader({ size = 40, color = '#2563EB' }: CustomLoaderProps) {
+export default function CustomLoader({ size = 40, color = theme.colors.primary }: CustomLoaderProps) {
   const wave1 = useRef(new Animated.Value(0)).current
   const wave2 = useRef(new Animated.Value(0)).current
   const wave3 = useRef(new Animated.Value(0)).current
