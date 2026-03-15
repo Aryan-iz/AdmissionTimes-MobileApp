@@ -18,6 +18,9 @@ import { config } from '../config/env';
 import { getAccessToken, signOutUser } from './supabase';
 import { ApiError } from './types';
 
+const NETWORK_ERROR_LOG_THROTTLE_MS = 15000;
+let lastNetworkErrorLogAt = 0;
+
 /**
  * Create axios instance with base configuration
  * 
@@ -47,6 +50,8 @@ const apiClient: AxiosInstance = axios.create({
 apiClient.interceptors.request.use(
   async (requestConfig: InternalAxiosRequestConfig) => {
     try {
+      requestConfig.baseURL = config.apiBaseUrl;
+
       // Get JWT token from Supabase
       const token = await getAccessToken();
 
@@ -56,7 +61,6 @@ apiClient.interceptors.request.use(
 
         if (config.debugApi && __DEV__) {
           console.log(`🔐 [API] JWT token attached to ${requestConfig.method?.toUpperCase()} ${requestConfig.url}`);
-          console.log(`🔐 [API] Token prefix: ${token.substring(0, 20)}...`);
         }
       } else {
         if (__DEV__) {
@@ -162,17 +166,30 @@ apiClient.interceptors.response.use(
       }
     } else if (error.request) {
       // Request made but no response received (network error)
-      console.error('❌ [API] Network Error: No response received');
-      console.error('   URL:', error.config?.url || 'Unknown');
-      console.error('   Base URL:', error.config?.baseURL || 'Unknown');
-      console.error('   Full URL:', `${error.config?.baseURL}${error.config?.url}`);
-      console.error('   Method:', error.config?.method?.toUpperCase() || 'Unknown');
-      console.error('   Error:', error.message);
-      console.error('   ⚠️  TROUBLESHOOTING:');
-      console.error('      1. Is backend running? Check: curl http://192.168.100.144:3000/health');
-      console.error('      2. Is backend listening on 0.0.0.0? (not just localhost)');
-      console.error('      3. Is firewall blocking connection?');
-      console.error('      4. Are you on the same WiFi network?');
+      const baseUrl = String(error.config?.baseURL || '');
+      const healthUrl = baseUrl.includes('/api/v1')
+        ? baseUrl.replace('/api/v1', '/health')
+        : `${baseUrl}/health`;
+
+      const now = Date.now();
+      const shouldLogDetails = now - lastNetworkErrorLogAt >= NETWORK_ERROR_LOG_THROTTLE_MS;
+
+      if (shouldLogDetails) {
+        lastNetworkErrorLogAt = now;
+        console.error('❌ [API] Network Error: No response received');
+        console.error('   URL:', error.config?.url || 'Unknown');
+        console.error('   Base URL:', error.config?.baseURL || 'Unknown');
+        console.error('   Full URL:', `${error.config?.baseURL}${error.config?.url}`);
+        console.error('   Method:', error.config?.method?.toUpperCase() || 'Unknown');
+        console.error('   Error:', error.message);
+        console.error('   ⚠️  TROUBLESHOOTING:');
+        console.error(`      1. Is backend running? Check: curl ${healthUrl}`);
+        console.error('      2. Is backend listening on 0.0.0.0? (not just localhost)');
+        console.error('      3. Is firewall blocking connection?');
+        console.error('      4. Are you on the same WiFi network?');
+      } else if (__DEV__) {
+        console.warn('⚠️ [API] Repeated network error suppressed (throttled)');
+      }
       return Promise.reject(error);
     } else {
       // Something else happened (request setup error)

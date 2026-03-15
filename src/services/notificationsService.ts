@@ -12,6 +12,13 @@
 import apiClient from './apiClient';
 import { ApiResponse, PaginatedResponse, Notification } from './types';
 
+type PushPlatform = 'ios' | 'android' | 'web';
+
+interface PushTokenPayload {
+  expo_push_token: string;
+  platform: PushPlatform;
+}
+
 export const notificationsService = {
   /**
    * List notifications with optional filters
@@ -99,6 +106,18 @@ export const notificationsService = {
   delete: async (id: string): Promise<ApiResponse<void>> => {
     console.log('🔔 [notificationsService] Deleting notification:', id);
     const response = await apiClient.delete(`/notifications/${id}`);
+    return response.data;
+  },
+
+  registerPushToken: async (payload: PushTokenPayload): Promise<ApiResponse<{ id: string }>> => {
+    console.log('🔔 [notificationsService] Registering push token');
+    const response = await apiClient.post('/notifications/push-token', payload);
+    return response.data;
+  },
+
+  unregisterPushToken: async (payload: { expo_push_token: string }): Promise<ApiResponse<void>> => {
+    console.log('🔔 [notificationsService] Unregistering push token');
+    const response = await apiClient.delete('/notifications/push-token', { data: payload });
     return response.data;
   },
 };

@@ -1,12 +1,8 @@
 /**
- * SignUpScreen - User Registration Screen
- * 
- * Allows new users to create an account with the following roles:
- * - Student
- * - University Representative
- * - Admin
- * 
- * Matches web frontend SignUp.tsx exactly
+ * SignUpScreen - Student Registration Screen
+ *
+ * Mobile app scope is student-only, so new accounts created here are always
+ * student accounts backed by Supabase auth + backend profile creation.
  */
 
 import { useState } from 'react'
@@ -26,7 +22,7 @@ import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store'
-import { CustomLoader } from '../../components/ui'
+import { BrandMark, CustomLoader } from '../../components/ui'
 
 export default function SignUpScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -37,18 +33,15 @@ export default function SignUpScreen() {
     email: '',
     password: '',
     confirmPassword: '',
-    user_type: 'student' as 'student' | 'university' | 'admin',
+    user_type: 'student' as const,
     display_name: '',
-    university_id: '',
   })
 
   const [errors, setErrors] = useState<{
     email?: string
     password?: string
     confirmPassword?: string
-    user_type?: string
     display_name?: string
-    university_id?: string
   }>({})
 
   const [apiError, setApiError] = useState<string>('')
@@ -90,10 +83,6 @@ export default function SignUpScreen() {
       newErrors.confirmPassword = 'Passwords do not match'
     }
 
-    if (!formData.user_type) {
-      newErrors.user_type = 'Please select an account type'
-    }
-
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -115,9 +104,8 @@ export default function SignUpScreen() {
         {
           email: formData.email.trim(),
           password: formData.password,
-          user_type: formData.user_type,
+          user_type: 'student',
           display_name: formData.display_name || formData.email.split('@')[0],
-          university_id: formData.university_id || undefined,
         },
         {
           onSuccess: () => {
@@ -165,7 +153,10 @@ export default function SignUpScreen() {
           <View style={styles.card}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.logo}>AdmissionTimes</Text>
+              <View style={styles.logoRow}>
+                <BrandMark size={30} />
+                <Text style={styles.logoText}>AdmissionTimes</Text>
+              </View>
               <Text style={styles.title}>Create Account</Text>
               <Text style={styles.subtitle}>Sign up to get started with AdmissionTimes.</Text>
             </View>
@@ -179,37 +170,12 @@ export default function SignUpScreen() {
 
             {/* Form */}
             <View style={styles.form}>
-              {/* Account Type */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Account Type *</Text>
-                <View style={[styles.pickerContainer, errors.user_type && styles.inputError]}>
-                  <Pressable 
-                    style={styles.picker}
-                    onPress={() => {
-                      // In a real app, use a proper picker modal
-                      Alert.alert(
-                        'Account Type',
-                        'Select your account type',
-                        [
-                          { text: 'Student', onPress: () => handleChange('user_type', 'student') },
-                          { text: 'University Representative', onPress: () => handleChange('user_type', 'university') },
-                          { text: 'Admin', onPress: () => handleChange('user_type', 'admin') },
-                          { text: 'Cancel', style: 'cancel' },
-                        ]
-                      )
-                    }}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.pickerText}>
-                      {formData.user_type === 'student'
-                        ? 'Student'
-                        : formData.user_type === 'university'
-                        ? 'University Representative'
-                        : 'Admin'}
-                    </Text>
-                  </Pressable>
-                </View>
-                {errors.user_type && <Text style={styles.errorLabel}>{errors.user_type}</Text>}
+              <View style={styles.scopeNotice}>
+                <Text style={styles.scopeNoticeLabel}>Account Type</Text>
+                <Text style={styles.scopeNoticeValue}>Student</Text>
+                <Text style={styles.scopeNoticeText}>
+                  Mobile registration currently creates student accounts only.
+                </Text>
               </View>
 
               {/* Display Name */}
@@ -331,11 +297,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  logo: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2563EB',
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
+  },
+  logoText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
   },
   title: {
     fontSize: 24,
@@ -391,23 +362,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#EF4444',
   },
-  pickerContainer: {
-    width: '100%',
-    height: 48,
+  scopeNotice: {
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
     borderRadius: 8,
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
   },
-  picker: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
+  scopeNoticeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1D4ED8',
+    marginBottom: 4,
+    textTransform: 'uppercase',
   },
-  pickerText: {
+  scopeNoticeValue: {
     fontSize: 16,
+    fontWeight: '600',
     color: '#111827',
+    marginBottom: 4,
+  },
+  scopeNoticeText: {
+    fontSize: 13,
+    color: '#475569',
   },
   button: {
     width: '100%',

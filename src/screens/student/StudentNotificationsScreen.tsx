@@ -1,12 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ScrollView, View, Text, Pressable, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useNavigation } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
 import { StudentNotification } from '../../data/studentData'
 import { useStudentStore } from '../../store'
 import { TitleHeader, CustomLoader } from '../../components/ui'
+import { Feather } from '@expo/vector-icons'
 
 type StudentNotificationsNavigationProp = StackNavigationProp<RootStackParamList, 'StudentNotifications'>
 
@@ -16,13 +17,27 @@ export default function StudentNotificationsScreen() {
   const markNotificationRead = useStudentStore(state => state.markNotificationRead)
   const markAllNotificationsRead = useStudentStore(state => state.markAllNotificationsRead)
   const refreshNotifications = useStudentStore(state => state.refreshNotifications)
-  const [activeTab, setActiveTab] = useState<'All' | 'alert' | 'admission'>('All')
+  const [activeTab, setActiveTab] = useState<'All' | 'alert' | 'admission' | 'system'>('All')
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 600)
     return () => clearTimeout(timer)
   }, [])
+
+  useFocusEffect(
+    useCallback(
+      () => {
+        refreshNotifications()
+        const interval = setInterval(() => {
+          refreshNotifications()
+        }, 30000)
+
+        return () => clearInterval(interval)
+      },
+      [refreshNotifications]
+    )
+  )
 
   const filteredNotifications = useMemo(() => {
     if (activeTab === 'All') {
@@ -31,28 +46,23 @@ export default function StudentNotificationsScreen() {
     return notifications.filter(n => n.type === activeTab)
   }, [notifications, activeTab])
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsRead()
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsRead()
   }
 
-  const handleMarkRead = (id: string) => {
-    markNotificationRead(id)
+  const handleMarkRead = async (id: string) => {
+    await markNotificationRead(id)
   }
 
-  const handleNotificationClick = (notification: StudentNotification) => {
-    handleMarkRead(notification.id)
+  const handleNotificationClick = async (notification: StudentNotification) => {
+    await handleMarkRead(notification.id)
     if (notification.admissionId) {
       navigation.navigate('ProgramDetail', { id: notification.admissionId })
     }
   }
 
-  const handleRefresh = () => {
-    refreshNotifications()
-  }
-
-  const getIconPath = (iconPath: string): string => {
-    // Return the icon path as-is (SVG path data)
-    return iconPath
+  const handleRefresh = async () => {
+    await refreshNotifications()
   }
 
   return (
@@ -73,19 +83,26 @@ export default function StudentNotificationsScreen() {
 
           <View style={styles.actionButtons}>
             <Pressable style={styles.actionButton} onPress={handleMarkAllRead}>
-              <Text style={styles.actionButtonIcon}>✓</Text>
+              <Feather name="check" size={14} color="#374151" style={styles.actionButtonIcon} />
               <Text style={styles.actionButtonText}>Mark All as Read</Text>
             </Pressable>
-            <Pressable style={styles.actionButton} onPress={handleRefresh}>
-              <Text style={styles.actionButtonIcon}>↻</Text>
-              <Text style={styles.actionButtonText}>Refresh</Text>
+            <Pressable style={styles.refreshButton} onPress={handleRefresh}>
+              <Feather name="refresh-cw" size={13} color="#2563EB" style={styles.refreshButtonIcon} />
+              <Text style={styles.refreshButtonText}>Refresh</Text>
             </Pressable>
           </View>
 
           <View style={styles.card}>
             <View style={styles.tabContainer}>
-              {(['All', 'Alerts', 'Admission'] as const).map((tab) => {
-                const tabValue = tab === 'All' ? 'All' : tab === 'Alerts' ? 'alert' : 'admission'
+              {(['All', 'Alerts', 'Admission', 'System'] as const).map((tab) => {
+                const tabValue =
+                  tab === 'All'
+                    ? 'All'
+                    : tab === 'Alerts'
+                      ? 'alert'
+                      : tab === 'Admission'
+                        ? 'admission'
+                        : 'system'
                 const isActive = activeTab === tabValue
                 return (
                   <Pressable
@@ -116,9 +133,17 @@ export default function StudentNotificationsScreen() {
                   >
                     <View style={styles.notificationContent}>
                       <View style={[styles.iconContainer, { backgroundColor: `${notification.iconColor}20` }]}>
-                        <Text style={[styles.iconEmoji, { color: notification.iconColor }]}>
-                          {notification.type === 'alert' ? '🔔' : '🎓'}
-                        </Text>
+                        <Feather
+                          name={
+                            notification.type === 'alert'
+                              ? 'bell'
+                              : notification.type === 'admission'
+                                ? 'book-open'
+                                : 'settings'
+                          }
+                          size={18}
+                          color={notification.iconColor}
+                        />
                       </View>
                       <View style={styles.notificationText}>
                         <View style={styles.notificationHeader}>
@@ -174,6 +199,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
   actionButton: {
@@ -186,13 +212,31 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   actionButtonIcon: {
-    fontSize: 16,
     marginRight: 8,
   },
   actionButtonText: {
     fontSize: 14,
     fontWeight: '500',
     color: '#374151',
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  refreshButtonIcon: {
+    marginRight: 6,
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -257,9 +301,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
-  },
-  iconEmoji: {
-    fontSize: 20,
   },
   notificationText: {
     flex: 1,

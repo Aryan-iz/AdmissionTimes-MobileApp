@@ -1,6 +1,9 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
+import { Ionicons } from '@expo/vector-icons'
+import { theme } from '../../theme'
+import BrandMark from './BrandMark'
 
 interface TitleHeaderProps {
   title: string
@@ -22,9 +25,12 @@ export default function TitleHeader({ title, onBack }: TitleHeaderProps) {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={handleBack} style={styles.backButton}>
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="arrow-back" size={22} color={theme.colors.textMuted} />
         </Pressable>
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.centerContent}>
+          <BrandMark size={22} />
+          <Text style={styles.title}>{title}</Text>
+        </View>
         <View style={styles.placeholder} />
       </View>
     </SafeAreaView>
@@ -33,7 +39,7 @@ export default function TitleHeader({ title, onBack }: TitleHeaderProps) {
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -41,23 +47,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: theme.colors.border,
   },
   backButton: {
     padding: 8,
     marginLeft: -8,
   },
-  backIcon: {
-    fontSize: 24,
-    color: '#374151',
+  centerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
-    flex: 1,
+    color: theme.colors.text,
     textAlign: 'center',
   },
   placeholder: {

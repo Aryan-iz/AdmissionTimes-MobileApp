@@ -6,6 +6,7 @@ import { RootStackParamList } from '../../navigation/AppNavigator'
 import { useStudentStore } from '../../store'
 import { getStatusColor, StudentAdmission } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
+import { Feather } from '@expo/vector-icons'
 
 type CompareScreenRouteProp = RouteProp<RootStackParamList, 'StudentCompare'>
 type CompareScreenNavigationProp = StackNavigationProp<RootStackParamList, 'StudentCompare'>
@@ -45,22 +46,17 @@ const CompareCard = ({ admission, onViewDetails }: { admission: StudentAdmission
 
       <View style={styles.cardDetails}>
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>🎓</Text>
+          <Feather name="book-open" size={16} color="#6B7280" style={styles.detailIcon} />
           <Text style={styles.detailText} numberOfLines={1}>{admission.degree}</Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>💰</Text>
-          <Text style={styles.detailText}>{admission.fee}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>📅</Text>
+          <Feather name="calendar" size={16} color="#6B7280" style={styles.detailIcon} />
           <Text style={styles.detailText}>{admission.deadlineDisplay}</Text>
         </View>
 
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>📍</Text>
+          <Feather name="map-pin" size={16} color="#6B7280" style={styles.detailIcon} />
           <Text style={styles.detailText} numberOfLines={1}>{admission.location}</Text>
         </View>
       </View>
@@ -73,7 +69,10 @@ const CompareCard = ({ admission, onViewDetails }: { admission: StudentAdmission
       </View>
 
       <Pressable onPress={handleViewOriginal}>
-        <Text style={styles.viewLink}>View Original Admission →</Text>
+        <View style={styles.viewLinkRow}>
+          <Text style={styles.viewLink}>View Original Admission</Text>
+          <Feather name="arrow-right" size={14} color="#2563EB" />
+        </View>
       </Pressable>
     </View>
   )
@@ -150,7 +149,7 @@ export default function CompareScreen() {
         <TitleHeader title="Compare Admissions" />
         <View style={styles.emptyContainer}>
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>📄</Text>
+            <Feather name="file-text" size={56} color="#9CA3AF" style={styles.emptyIcon} />
             <Text style={styles.emptyTitle}>Not Enough Admissions Selected</Text>
             <Text style={styles.emptyMessage}>Please select at least 2 admissions to compare.</Text>
             <Pressable 
@@ -171,7 +170,7 @@ export default function CompareScreen() {
         <TitleHeader title="Compare Admissions" />
         <View style={styles.emptyContainer}>
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>⚠️</Text>
+            <Feather name="alert-triangle" size={56} color="#F59E0B" style={styles.emptyIcon} />
             <Text style={styles.emptyTitle}>Too Many Admissions Selected</Text>
             <Text style={styles.emptyMessage}>Please select a maximum of 4 admissions to compare.</Text>
             <Pressable 
@@ -210,13 +209,13 @@ export default function CompareScreen() {
 
         <View style={styles.highlightsCard}>
           <View style={styles.highlightsHeader}>
-            <Text style={styles.highlightIcon}>⚡</Text>
-            <Text style={styles.highlightsTitle}>AI-Generated Key Differences</Text>
+            <Feather name="zap" size={18} color="#2563EB" style={styles.highlightIcon} />
+            <Text style={styles.highlightsTitle}>Key Differences</Text>
           </View>
           <View style={styles.highlightsList}>
             {highlights.map((highlight, index) => (
               <View key={index} style={styles.highlightItem}>
-                <Text style={styles.highlightBullet}>✓</Text>
+                <Feather name="check" size={14} color="#9CA3AF" style={styles.highlightBullet} />
                 <Text style={styles.highlightText}>{highlight}</Text>
               </View>
             ))}
@@ -310,7 +309,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   detailIcon: {
-    fontSize: 16,
     marginRight: 8,
   },
   detailText: {
@@ -339,6 +337,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#2563EB',
   },
+  viewLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   highlightsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
@@ -353,7 +356,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   highlightIcon: {
-    fontSize: 20,
     marginRight: 8,
   },
   highlightsTitle: {
@@ -370,8 +372,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   highlightBullet: {
-    fontSize: 16,
-    color: '#9CA3AF',
     marginRight: 12,
     marginTop: 2,
   },
@@ -397,7 +397,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyIcon: {
-    fontSize: 64,
     marginBottom: 16,
   },
   emptyTitle: {

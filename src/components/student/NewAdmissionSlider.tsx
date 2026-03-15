@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { View, Text, StyleSheet, Dimensions, Animated, Pressable } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
+import { Feather } from '@expo/vector-icons'
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import type { StudentAdmission } from '../../data/studentData'
 import { useStudentStore } from '../../store/studentStore'
@@ -113,7 +114,7 @@ export default function NewAdmissionSlider({ admissions: propAdmissions }: NewAd
           onPress={() => navigation.navigate('ProgramDetail', { id: currentAdmission.id })}
         >
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>✨ NEW</Text>
+            <Text style={styles.badgeText}>NEW</Text>
           </View>
           
           <View style={styles.content}>
@@ -126,21 +127,19 @@ export default function NewAdmissionSlider({ admissions: propAdmissions }: NewAd
               </Text>
               <View style={styles.details}>
                 <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>📍 {currentAdmission.city}</Text>
+                  <Feather name="map-pin" size={12} color="#9CA3AF" />
+                  <Text style={styles.detailLabel}>{currentAdmission.city}</Text>
                 </View>
                 <View style={styles.detailSeparator} />
                 <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>💰 {currentAdmission.fee}</Text>
-                </View>
-                <View style={styles.detailSeparator} />
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>📅 {currentAdmission.deadlineDisplay}</Text>
+                  <Feather name="calendar" size={12} color="#9CA3AF" />
+                  <Text style={styles.detailLabel}>{currentAdmission.deadlineDisplay}</Text>
                 </View>
               </View>
             </View>
 
             <View style={styles.arrow}>
-              <Text style={styles.arrowText}>→</Text>
+              <Feather name="arrow-right" size={18} color="#2563EB" />
             </View>
           </View>
 
@@ -229,6 +228,7 @@ const styles = StyleSheet.create({
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   detailLabel: {
     fontSize: 11,
@@ -248,11 +248,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  arrowText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#4F46E5',
   },
   indicators: {
     flexDirection: 'row',

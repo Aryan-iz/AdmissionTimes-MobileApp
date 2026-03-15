@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { ScrollView, Text, View, Pressable, TextInput, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
+import { Feather } from '@expo/vector-icons'
 
 export default function SearchAdmissionsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -15,7 +16,9 @@ export default function SearchAdmissionsScreen() {
   const signOut = useAuthStore(state => state.signOut)
   const admissions = useStudentStore(state => state.admissions)
   const savedIds = useStudentStore(state => state.savedAdmissions)
+  const notifications = useStudentStore(state => state.notifications)
   const toggleSaved = useStudentStore(state => state.toggleSaved)
+  const searchAdmissions = useStudentStore(state => state.searchAdmissions)
   
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filtersVisible, setFiltersVisible] = useState(false)
@@ -25,6 +28,11 @@ export default function SearchAdmissionsScreen() {
   const [selectedStatus, setSelectedStatus] = useState<string[]>([])
   const [compareIds, setCompareIds] = useState<string[]>([])
   const [isLoadingResults, setIsLoadingResults] = useState(false)
+  const [searchResults, setSearchResults] = useState(admissions)
+
+  useEffect(() => {
+    setSearchResults(admissions)
+  }, [admissions])
 
   const universities = useMemo(() => {
     return Array.from(new Set(admissions.map(a => a.university))).sort()
@@ -49,9 +57,44 @@ export default function SearchAdmissionsScreen() {
     setSelectedStatus([])
   }
 
-  const filteredAdmissions = useMemo(() => {
+  useEffect(() => {
+    const trimmedQuery = searchQuery.trim()
+    const shouldUseApiSearch = trimmedQuery.length > 0 || cityFilter.length > 0
+
+    if (!shouldUseApiSearch) {
+      setSearchResults(admissions)
+      return
+    }
+
+    let isCancelled = false
     setIsLoadingResults(true)
-    let filtered = [...admissions]
+
+    const timer = setTimeout(() => {
+      searchAdmissions({
+        search: trimmedQuery || undefined,
+        city: cityFilter || undefined,
+        limit: 100,
+      })
+        .then(results => {
+          if (!isCancelled) {
+            setSearchResults(results)
+          }
+        })
+        .finally(() => {
+          if (!isCancelled) {
+            setIsLoadingResults(false)
+          }
+        })
+    }, 250)
+
+    return () => {
+      isCancelled = true
+      clearTimeout(timer)
+    }
+  }, [admissions, cityFilter, searchAdmissions, searchQuery])
+
+  const filteredAdmissions = useMemo(() => {
+    let filtered = [...searchResults]
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
@@ -74,9 +117,19 @@ export default function SearchAdmissionsScreen() {
       filtered = filtered.filter(a => selectedStatus.includes(a.status))
     }
 
-    setTimeout(() => setIsLoadingResults(false), 300)
     return filtered
-  }, [admissions, searchQuery, universityFilter, cityFilter, selectedStatus])
+  }, [searchResults, searchQuery, universityFilter, cityFilter, selectedStatus])
+
+  useEffect(() => {
+    const trimmedQuery = searchQuery.trim()
+    if (trimmedQuery.length > 0 || cityFilter.length > 0) {
+      return
+    }
+
+    setIsLoadingResults(true)
+    const timer = setTimeout(() => setIsLoadingResults(false), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery, universityFilter, cityFilter, selectedStatus, admissions.length])
 
   const toggleCompare = (id: string) => {
     setCompareIds(prev => {
@@ -101,20 +154,23 @@ export default function SearchAdmissionsScreen() {
       <PremiumHeader
         userName={user?.name || 'Student'}
         userRole="Student"
-        notifications={0}
+        notifications={notifications.filter(n => !n.read).length}
         onNotificationPress={() => navigation.navigate('StudentNotifications')}
         onLogout={signOut}
       />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Search Bar */}
         <View style={styles.searchCard}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search programs, universities..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor="#9CA3AF"
-          />
+          <View style={styles.searchInputRow}>
+            <Feather name="search" size={14} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search programs, universities..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
         </View>
 
         {/* Toolbar */}
@@ -272,7 +328,6 @@ export default function SearchAdmissionsScreen() {
                       <Text style={[styles.detailText, daysLeft <= 7 && styles.urgentText]}>
                         {admission.deadlineDisplay}
                       </Text>
-                      <Text style={styles.detailText}>{admission.fee}</Text>
                     </View>
 
                     <View style={styles.cardActions}>
@@ -283,7 +338,7 @@ export default function SearchAdmissionsScreen() {
                           toggleCompare(admission.id)
                         }}
                       >
-                        <Text style={[styles.actionIcon, isComparing && styles.actionIconActive]}>⚖</Text>
+                        <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
                       </Pressable>
                       <Pressable
                         style={styles.actionButton}
@@ -292,7 +347,7 @@ export default function SearchAdmissionsScreen() {
                           toggleSaved(admission.id)
                         }}
                       >
-                        <Text style={[styles.actionIcon, isSaved && styles.actionIconActive]}>{isSaved ? '★' : '☆'}</Text>
+                        <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />
                       </Pressable>
                     </View>
                   </Pressable>
@@ -327,7 +382,6 @@ export default function SearchAdmissionsScreen() {
                         <Text style={[styles.detailText, daysLeft <= 7 && styles.urgentText]}>
                           {admission.deadlineDisplay}
                         </Text>
-                        <Text style={styles.detailText}> • {admission.fee}</Text>
                       </View>
                     </View>
                   </View>
@@ -345,7 +399,7 @@ export default function SearchAdmissionsScreen() {
                           toggleCompare(admission.id)
                         }}
                       >
-                        <Text style={[styles.actionIcon, isComparing && styles.actionIconActive]}>⚖</Text>
+                        <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
                       </Pressable>
                       <Pressable
                         style={styles.actionButton}
@@ -354,7 +408,7 @@ export default function SearchAdmissionsScreen() {
                           toggleSaved(admission.id)
                         }}
                       >
-                        <Text style={[styles.actionIcon, isSaved && styles.actionIconActive]}>{isSaved ? '★' : '☆'}</Text>
+                        <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />
                       </Pressable>
                     </View>
                   </View>
@@ -388,14 +442,22 @@ const styles = StyleSheet.create({
   searchCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  searchInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchInput: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 14,
     color: '#111827',
+    paddingVertical: 2,
   },
   toolbar: {
     flexDirection: 'row',

@@ -6,14 +6,14 @@ import {
   Pressable,
   StyleSheet,
   Animated,
-  TextInput,
   Platform,
 } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 
 interface ReminderModalProps {
   visible: boolean
   onClose: () => void
-  onSetReminder: (days: number, note: string) => void
+  onSetReminder: () => void
   programName: string
   deadline: string
 }
@@ -25,7 +25,6 @@ export default function ReminderModal({
   programName,
   deadline,
 }: ReminderModalProps) {
-  const [note, setNote] = useState('')
   const [scaleAnim] = useState(new Animated.Value(0))
   const [hasOpened, setHasOpened] = useState(false)
 
@@ -46,13 +45,12 @@ export default function ReminderModal({
       useNativeDriver: true,
     }).start(() => {
       onClose()
-      setNote('')
       setHasOpened(false)
     })
   }
 
   const handleSetReminder = () => {
-    onSetReminder(3, note)
+    onSetReminder()
     handleClose()
   }
 
@@ -82,18 +80,18 @@ export default function ReminderModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Text style={styles.icon}>🔔</Text>
+              <Feather name="bell" size={28} color="#2563EB" />
             </View>
-            <Text style={styles.title}>Set Reminder</Text>
+            <Text style={styles.title}>Enable Reminder</Text>
             <Text style={styles.subtitle}>
-              Get notified before the deadline for {programName}
+              Save this admission and enable deadline alerts for {programName}
             </Text>
           </View>
 
           {/* Deadline Info */}
           <View style={styles.deadlineCard}>
             <View style={styles.deadlineIcon}>
-              <Text style={styles.deadlineIconText}>📅</Text>
+              <Feather name="calendar" size={18} color="#2563EB" />
             </View>
             <View style={styles.deadlineInfo}>
               <Text style={styles.deadlineLabel}>Application Deadline</Text>
@@ -101,31 +99,14 @@ export default function ReminderModal({
             </View>
           </View>
 
-          {/* Reminder Info */}
           <View style={styles.reminderInfoCard}>
             <View style={styles.reminderIconContainer}>
-              <Text style={styles.reminderIconText}>⏰</Text>
+              <Feather name="bookmark" size={18} color="#FFFFFF" />
             </View>
             <View style={styles.reminderTextContainer}>
-              <Text style={styles.reminderTitle}>Reminder Set For</Text>
-              <Text style={styles.reminderValue}>3 Days Before Deadline</Text>
+              <Text style={styles.reminderTitle}>What happens</Text>
+              <Text style={styles.reminderValue}>This program will be saved and alerts will be enabled.</Text>
             </View>
-          </View>
-
-          {/* Note Input */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Add a note (optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="E.g., Prepare documents, review requirements..."
-              placeholderTextColor="#9CA3AF"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              numberOfLines={3}
-              maxLength={200}
-            />
-            <Text style={styles.charCount}>{note.length}/200</Text>
           </View>
 
           {/* Actions */}
@@ -134,7 +115,7 @@ export default function ReminderModal({
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable style={styles.confirmButton} onPress={handleSetReminder}>
-              <Text style={styles.confirmButtonText}>Set Reminder</Text>
+              <Text style={styles.confirmButtonText}>Save & Enable Alert</Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -189,9 +170,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  icon: {
-    fontSize: 32,
-  },
   title: {
     fontSize: 24,
     fontWeight: '700',
@@ -223,9 +201,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  deadlineIconText: {
-    fontSize: 20,
-  },
   deadlineInfo: {
     flex: 1,
   },
@@ -239,15 +214,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
   },
   reminderInfoCard: {
     flexDirection: 'row',
@@ -268,9 +234,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  reminderIconText: {
-    fontSize: 20,
-  },
   reminderTextContainer: {
     flex: 1,
   },
@@ -281,26 +244,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   reminderValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#4F46E5',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    padding: 12,
     fontSize: 14,
+    fontWeight: '600',
     color: '#111827',
-    backgroundColor: '#F9FAFB',
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  charCount: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    textAlign: 'right',
-    marginTop: 6,
   },
   actions: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native'
+import { theme } from '../theme'
 
 export const screenStyles = StyleSheet.create({
   container: {
@@ -17,7 +18,7 @@ export const screenStyles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#2563EB',
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
   },
   buttonText: {
@@ -29,9 +30,9 @@ export const screenStyles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'white',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: theme.colors.border,
   },
   muted: {
-    color: '#6B7280',
+    color: theme.colors.textMuted,
   },
 })
