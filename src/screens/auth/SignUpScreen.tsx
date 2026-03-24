@@ -33,7 +33,6 @@ export default function SignUpScreen() {
     email: '',
     password: '',
     confirmPassword: '',
-    user_type: 'student' as const,
     display_name: '',
   })
 
@@ -96,8 +95,8 @@ export default function SignUpScreen() {
 
     try {
       console.log('[SignUp] Starting signup with:', { 
-        email: formData.email.trim(), 
-        user_type: formData.user_type 
+        email: formData.email.trim(),
+        user_type: 'student',
       })
 
       await signUp(
@@ -170,14 +169,6 @@ export default function SignUpScreen() {
 
             {/* Form */}
             <View style={styles.form}>
-              <View style={styles.scopeNotice}>
-                <Text style={styles.scopeNoticeLabel}>Account Type</Text>
-                <Text style={styles.scopeNoticeValue}>Student</Text>
-                <Text style={styles.scopeNoticeText}>
-                  Mobile registration currently creates student accounts only.
-                </Text>
-              </View>
-
               {/* Display Name */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Display Name</Text>
@@ -361,30 +352,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: '#EF4444',
-  },
-  scopeNotice: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-  },
-  scopeNoticeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1D4ED8',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  scopeNoticeValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  scopeNoticeText: {
-    fontSize: 13,
-    color: '#475569',
   },
   button: {
     width: '100%',

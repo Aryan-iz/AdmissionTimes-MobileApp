@@ -1,6 +1,9 @@
 import { Modal, View, Text, TextInput, ScrollView, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
 import { useState, useRef, useEffect } from 'react'
 import { useAi } from '../../contexts/AiContext'
+import aiService, { type ChatHistoryEntry } from '../../services/aiService'
+
+type AiAvailability = 'checking' | 'online' | 'fallback'
 
 interface Message {
   id: string
@@ -10,10 +13,10 @@ interface Message {
 }
 
 const quickActions = [
-  'Find programs for me',
-  'Compare universities',
-  'Show deadlines',
-  'Admission requirements',
+  'Find CS programs in Karachi',
+  'Show deadlines this week',
+  'Compare my saved programs',
+  'What does Verified status mean?',
 ]
 
 export default function ChatModal() {
@@ -28,15 +31,108 @@ export default function ChatModal() {
   ])
   const [inputText, setInputText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [availability, setAvailability] = useState<AiAvailability>('checking')
   const scrollViewRef = useRef<ScrollView>(null)
 
-  const handleSend = () => {
-    if (!inputText.trim()) return
+  const subtitleStatus =
+    availability === 'online'
+      ? 'Online'
+      : availability === 'checking'
+      ? 'Checking'
+      : 'Guided mode'
+
+  const buildFallbackResponse = (query: string): string => {
+    const lower = query.toLowerCase()
+    const suggestions: string[] = []
+
+    if (lower.includes('deadline') || lower.includes('reminder')) {
+      suggestions.push('Open Deadlines to review due dates and urgent submissions.')
+      suggestions.push('Enable alerts from your watchlist for upcoming program deadlines.')
+    }
+
+    if (lower.includes('compare') || lower.includes('university')) {
+      suggestions.push('Use Compare to evaluate fee, deadline, and degree details side by side.')
+      suggestions.push('Save programs first, then compare from your watchlist.')
+    }
+
+    if (lower.includes('requirement') || lower.includes('eligibility')) {
+      suggestions.push('Open a program detail page to review official requirements and documents.')
+      suggestions.push('Filter search by degree level and city to narrow matching programs.')
+    }
+
+    if (suggestions.length === 0) {
+      suggestions.push('Try a shorter query, for example: "Show deadlines this week".')
+      suggestions.push('You can also use quick actions below for common admission tasks.')
+    }
+
+    return [
+      'AI is temporarily unavailable. You can continue with these steps:',
+      ...suggestions.map((s) => `- ${s}`),
+    ].join('\n')
+  }
+
+  const isRefusalReply = (text: string): boolean => {
+    const lower = text.toLowerCase()
+    return (
+      lower.includes('i can only help with') ||
+      lower.includes('i cannot assist') ||
+      lower.includes('cannot manage') ||
+      lower.includes('i cannot access')
+    )
+  }
+
+  const buildGuidanceResponse = (query: string): string => {
+    const lower = query.toLowerCase()
+
+    if (lower.includes('compare')) {
+      return [
+        'To compare universities:',
+        '- Save programs you like first.',
+        '- Open Compare and select at least two programs.',
+        '- Review fee, deadline, and eligibility side by side.',
+      ].join('\n')
+    }
+
+    if (lower.includes('alert') || lower.includes('watchlist') || lower.includes('expired')) {
+      return [
+        'To manage watchlist and alerts:',
+        '- Open Watchlist and enable reminders for important programs.',
+        '- Check Deadlines for urgent items each week.',
+        '- Remove expired entries to keep recommendations relevant.',
+      ].join('\n')
+    }
+
+    if (lower.includes('status') || lower.includes('requirement') || lower.includes('eligibility')) {
+      return [
+        'Admissions help:',
+        '- Verified means the listing is approved and trusted.',
+        '- Pending means review is still in progress.',
+        '- Open program details for exact eligibility and document requirements.',
+      ].join('\n')
+    }
+
+    return [
+      'I can help with student admissions tasks:',
+      '- Find matching programs',
+      '- Compare universities',
+      '- Track deadlines and statuses',
+    ].join('\n')
+  }
+
+  const resolveAssistantReply = (query: string, answer: string | undefined): string => {
+    if (!answer) return buildFallbackResponse(query)
+    if (isRefusalReply(answer)) return buildGuidanceResponse(query)
+    return answer
+  }
+
+  const handleSend = async (quickMessage?: string) => {
+    const userText = quickMessage || inputText.trim()
+    if (!userText) return
 
     const newMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputText,
+      content: userText,
       timestamp: new Date(),
     }
 
@@ -44,21 +140,40 @@ export default function ChatModal() {
     setInputText('')
     setIsTyping(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    const historySnapshot: ChatHistoryEntry[] = messages
+      .filter((m) => m.id !== '1')
+      .slice(-4)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.content }))
+
+    try {
+      const response = await aiService.chat(userText, context, historySnapshot)
+      setAvailability('online')
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I understand you're asking about "${inputText}". Based on the ${context}, I can help you with that. Here are some relevant programs and information...`,
+        content: resolveAssistantReply(userText, response.data.answer?.trim()),
         timestamp: new Date(),
       }
+
       setMessages((prev) => [...prev, aiResponse])
+    } catch {
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: buildFallbackResponse(userText),
+        timestamp: new Date(),
+      }
+
+      setAvailability('fallback')
+
+      setMessages((prev) => [...prev, aiResponse])
+    } finally {
       setIsTyping(false)
-    }, 1500)
+    }
   }
 
   const handleQuickAction = (action: string) => {
-    setInputText(action)
+    void handleSend(action)
   }
 
   useEffect(() => {
@@ -66,6 +181,30 @@ export default function ChatModal() {
       scrollViewRef.current.scrollToEnd({ animated: true })
     }
   }, [messages])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    let isMounted = true
+    setAvailability('checking')
+
+    aiService
+      .health()
+      .then((response) => {
+        if (!isMounted) return
+        setAvailability(response.data.ready ? 'online' : 'fallback')
+      })
+      .catch(() => {
+        if (!isMounted) return
+        setAvailability('fallback')
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [isOpen])
 
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={closeChat}>
@@ -83,13 +222,33 @@ export default function ChatModal() {
               </View>
               <View>
                 <Text style={styles.headerTitle}>AI Assistant</Text>
-                <Text style={styles.headerSubtitle}>{context}</Text>
+                <View style={styles.subtitleRow}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      availability === 'online'
+                        ? styles.statusOnline
+                        : availability === 'checking'
+                        ? styles.statusChecking
+                        : styles.statusFallback,
+                    ]}
+                  />
+                  <Text style={styles.headerSubtitle}>{context} • {subtitleStatus}</Text>
+                </View>
               </View>
             </View>
             <Pressable style={styles.closeButton} onPress={closeChat}>
               <Text style={styles.closeIcon}>✕</Text>
             </Pressable>
           </View>
+
+          {availability === 'fallback' && (
+            <View style={styles.statusBanner}>
+              <Text style={styles.statusBannerText}>
+                Live AI is unavailable right now. Guided mode is active.
+              </Text>
+            </View>
+          )}
 
           {/* Quick Actions */}
           <View style={styles.quickActionsContainer}>
@@ -143,11 +302,19 @@ export default function ChatModal() {
               placeholderTextColor="#9CA3AF"
               value={inputText}
               onChangeText={setInputText}
-              onSubmitEditing={handleSend}
+              onSubmitEditing={() => {
+                void handleSend()
+              }}
               multiline
               maxLength={500}
             />
-            <Pressable style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} onPress={handleSend} disabled={!inputText.trim()}>
+            <Pressable
+              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+              onPress={() => {
+                void handleSend()
+              }}
+              disabled={!inputText.trim()}
+            >
               <Text style={styles.sendIcon}>➤</Text>
             </Pressable>
           </View>
@@ -210,6 +377,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     marginTop: 2,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusOnline: {
+    backgroundColor: '#10B981',
+  },
+  statusChecking: {
+    backgroundColor: '#F59E0B',
+  },
+  statusFallback: {
+    backgroundColor: '#EF4444',
+  },
+  statusBanner: {
+    backgroundColor: '#FEF3C7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FDE68A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  statusBannerText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '600',
   },
   closeButton: {
     width: 32,

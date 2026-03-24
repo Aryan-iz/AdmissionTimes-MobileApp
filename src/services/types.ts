@@ -92,11 +92,10 @@ export interface Admission {
     feeStructure?: Record<string, any>;
     officialLinks?: string[];
   } | null;
-  verification_status: 'draft' | 'pending' | 'verified' | 'rejected' | 'disputed';
+  verification_status: 'draft' | 'pending' | 'verified' | 'rejected';
   verified_at?: string | null;
   verified_by?: string | null;
   rejection_reason?: string | null;
-  dispute_reason?: string | null;
   created_by?: string | null;
   created_at: string;
   updated_at: string;
