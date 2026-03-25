@@ -13,7 +13,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
@@ -23,6 +22,7 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store'
 import { BrandMark, CustomLoader } from '../../components/ui'
+import { showAuthErrorToast, showInfoToast, showSuccessToast } from '../../services/toast'
 
 export default function SignUpScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -42,8 +42,6 @@ export default function SignUpScreen() {
     confirmPassword?: string
     display_name?: string
   }>({})
-
-  const [apiError, setApiError] = useState<string>('')
 
   const handleChange = (name: string, value: string) => {
     setFormData(prev => ({
@@ -87,9 +85,8 @@ export default function SignUpScreen() {
   }
 
   const handleSubmit = async () => {
-    setApiError('')
-
     if (!validate()) {
+      showInfoToast('Check your details', 'Please fix the highlighted fields and try again.')
       return
     }
 
@@ -108,20 +105,12 @@ export default function SignUpScreen() {
         },
         {
           onSuccess: () => {
-            Alert.alert(
-              'Account Created!',
-              'Your account has been created successfully. Please sign in to continue.',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.navigate('Login'),
-                },
-              ]
-            )
+            showSuccessToast('Account created', 'Your account is ready. Please sign in to continue.')
+            navigation.navigate('Login')
           },
           onError: (errorMessage: string) => {
             console.error('[SignUp] Error:', errorMessage)
-            setApiError(errorMessage)
+            showAuthErrorToast('Sign up failed', errorMessage)
           },
         }
       )
@@ -135,7 +124,7 @@ export default function SignUpScreen() {
         'Failed to create account. Please try again.'
 
       console.error('[SignUp] Error message:', errorMessage)
-      setApiError(errorMessage)
+      showAuthErrorToast('Sign up failed', errorMessage)
     }
   }
 
@@ -153,19 +142,14 @@ export default function SignUpScreen() {
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.logoRow}>
-                <BrandMark size={30} />
+                <View style={styles.logoIconWrap}>
+                  <BrandMark size={30} />
+                </View>
                 <Text style={styles.logoText}>AdmissionTimes</Text>
               </View>
               <Text style={styles.title}>Create Account</Text>
               <Text style={styles.subtitle}>Sign up to get started with AdmissionTimes.</Text>
             </View>
-
-            {/* API Error Display */}
-            {apiError && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>Error: {apiError}</Text>
-              </View>
-            )}
 
             {/* Form */}
             <View style={styles.form}>
@@ -291,13 +275,23 @@ const styles = StyleSheet.create({
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     marginBottom: 8,
   },
+  logoIconWrap: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoText: {
     fontSize: 24,
+    lineHeight: 28,
     fontWeight: '700',
     color: '#111827',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   title: {
     fontSize: 24,
@@ -308,19 +302,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#6B7280',
-  },
-  errorBox: {
-    padding: 12,
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FCA5A5',
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#B91C1C',
-    fontSize: 14,
-    fontWeight: '500',
   },
   form: {
     marginBottom: 16,
