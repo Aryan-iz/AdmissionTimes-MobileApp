@@ -27,6 +27,7 @@ import { View, StatusBar, AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 import type { NotificationResponse, EventSubscription } from 'expo-notifications'
+import Toast from 'react-native-toast-message'
 
 import { AiProvider } from './src/contexts/AiContext.tsx'
 import AppNavigator from './src/navigation/AppNavigator.tsx'
@@ -42,6 +43,7 @@ import {
 } from './src/services/pushNotifications'
 import { subscribeToStudentNotificationInserts } from './src/realtime/notificationsSubscription'
 import { notificationsService } from './src/services/notificationsService'
+import { toastConfig } from './src/services/toast'
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>()
 
@@ -237,6 +239,7 @@ export default function App() {
             <AppNavigator />
           </NavigationContainer>
         </AiProvider>
+        <Toast config={toastConfig} topOffset={52} />
       </View>
     </SafeAreaProvider>
   )

@@ -11,8 +11,8 @@ This document clarifies the intentional scope limitation of the Admission Times 
 The mobile application **fully implements** the Student user experience:
 
 #### Authentication & Account Management
-- Student login with mock authentication
-- Session persistence using AsyncStorage
+- Student login via Supabase + backend user lookup (`/api/v1/auth/me`)
+- Session persistence using secure mobile storage
 - Secure logout functionality
 
 #### Core Features
@@ -85,15 +85,15 @@ The mobile application **fully implements** the Student user experience:
 
 #### Technical Implementation
 - React Native (Expo) with TypeScript
-- Context API for state management
-- Mock data layer (no backend required)
+- Zustand for state management
+- Backend API integration for student domain data
 - Responsive UI for all screen sizes
 - Navigation using React Navigation
-- AsyncStorage for persistence
+- Secure session persistence
 
 ### 🚫 OUT OF SCOPE (Intentionally Excluded)
 
-The following modules exist in the codebase structure but are **deliberately disabled** in this phase:
+The following modules are **intentionally excluded** in this phase:
 
 #### Admin Module (Not Accessible)
 - Admin Dashboard
@@ -120,27 +120,22 @@ The following modules exist in the codebase structure but are **deliberately dis
 ### Code-Level Restrictions
 
 1. **AppNavigator.tsx**
-   - Removed conditional routing for `user.role === 'university'`
-   - Removed conditional routing for `user.role === 'admin'`
+   - Registers only student and auth routes
    - Only Student routes are registered
-   - University and Admin screens imported but not routed
+   - No university/admin/public route registrations
 
-2. **AuthContext.tsx**
-   - University and Admin mock accounts commented out
-   - Login function validates role === 'student'
-   - Explicit error message for non-student login attempts
-   - Documentation comments explain scope limitation
+2. **Module Pruning**
+   - University/Admin/Public screens and related module files are removed from active app paths
+   - Store and UI exports are constrained to student-only usage
 
 3. **LoginScreen.tsx**
-   - Only displays Student demo credentials
-   - Removed University and Admin credential hints
-   - Added note about disabled modules
-   - Clear messaging about current scope
+   - Uses real backend/Supabase credentials
+   - No hardcoded demo credentials
+   - Input validation before sign-in requests
 
-4. **App.tsx**
-   - Comprehensive header documentation
-   - Lists all active Student features
-   - Notes scope limitation for FYP
+4. **Student Data Layer**
+   - Student screens read from backend-connected services/stores
+   - In-file mock student datasets removed from runtime flows
 
 ## Rationale for Scope Decision
 
@@ -176,7 +171,6 @@ The architecture supports future expansion:
 - User management
 
 ### Phase 4 (Post-FYP)
-- Backend API integration
 - Real-time notifications (Firebase/OneSignal)
 - Advanced analytics
 - Social features
@@ -187,13 +181,13 @@ The architecture supports future expansion:
 ### For Viva/Presentation
 
 **Opening Statement:**
-> "This mobile application demonstrates a complete, production-ready Student module for the Admission Times platform. The Admin and University modules are architecturally present but intentionally disabled to ensure the Student experience is polished and demo-ready for the FYP submission."
+> "This mobile application demonstrates a complete, backend-integrated Student module for the Admission Times platform. The mobile scope is intentionally limited to student workflows so the delivered experience is stable, polished, and ready for FYP demonstration."
 
 **Key Points to Emphasize:**
 1. All Student features are 100% functional
 2. Clean, professional UI/UX
 3. No placeholder logic or broken navigation
-4. Mock data layer demonstrates real-world scenarios
+4. Real backend integration demonstrates production-style mobile architecture
 5. Architecture supports future role expansion
 
 **Handling Questions:**
@@ -201,10 +195,10 @@ The architecture supports future expansion:
   - A: "Based on FYP time constraints and best practices, I focused on depth over breadth. A fully functional Student module demonstrates more technical competency than three partially working modules."
 
 - Q: "Can you show Admin/University features?"
-  - A: "The architecture exists and is documented in the code, but these modules are planned for post-FYP phases. The current scope ensures a stable, demo-ready application."
+   - A: "Those modules are intentionally out of the current mobile scope. The current implementation focuses on a complete student workflow with real backend integration."
 
 - Q: "Is the app production-ready?"
-  - A: "The Student module is production-ready for demonstration purposes. Real production deployment would require backend integration, which is planned for future phases."
+   - A: "The student module is backend-integrated and production-oriented. Full production rollout would still require deployment hardening, monitoring, and release testing."
 
 ## Success Metrics
 
@@ -232,7 +226,7 @@ The architecture supports future expansion:
 - [x] README with scope explanation
 - [x] Inline code documentation
 - [x] Architecture documented
-- [x] Demo credentials provided
+- [x] Account access expectations documented
 - [x] Setup instructions clear
 - [x] Troubleshooting guide included
 

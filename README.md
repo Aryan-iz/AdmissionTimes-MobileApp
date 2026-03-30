@@ -12,7 +12,7 @@ Admin and University Representative modules are intentionally excluded in this p
 
 The following features are fully functional for Student users:
 
-- ✅ **Authentication** - Student login (mock authentication)
+- ✅ **Authentication** - Student login via Supabase + backend identity (`/auth/me`)
 - ✅ **Dashboard** - Personalized stats, recommendations, and quick actions
 - ✅ **Search Admissions** - Search, filter, and browse available programs
 - ✅ **Compare Programs** - Side-by-side comparison (up to 4 programs)
@@ -21,10 +21,11 @@ The following features are fully functional for Student users:
 - ✅ **Notifications** - Admission updates and system alerts
 - ✅ **Program Details** - Detailed view of each admission program
 - ✅ **AI Assistant** - Context-aware chat assistant for guidance
+- ✅ **Backend Integration** - Student data from backend APIs (no in-app mock datasets)
 
 ## 🚫 Out of Scope (Current Phase)
 
-The following modules exist in the codebase but are **intentionally disabled**:
+The following modules are **not implemented in this mobile app phase**:
 
 - ❌ Admin Dashboard
 - ❌ Admin Verification Center
@@ -34,16 +35,13 @@ The following modules exist in the codebase but are **intentionally disabled**:
 - ❌ University Manage Admissions
 - ❌ University Verification Center
 
-These modules are planned for future phases and not accessible in the current demo.
+These modules are planned for future phases and are not included in the current code paths.
 
-## 📱 Demo Account
+## 📱 Account Access
 
-```
-Email: student@demo.com
-Password: student123
-```
+Use a valid student account from your configured backend/Supabase environment.
 
-> **Note:** University and Admin accounts are disabled in this version.
+> **Note:** University and Admin role routing is not included in this version.
 
 ## 🏗️ Architecture
 
@@ -52,16 +50,12 @@ This folder is a React Native (Expo) structure that mirrors the web app architec
 ### Project Structure
 - `screens/` (equivalent to web `pages/`)
   - `student/` - Student feature screens ✅ ACTIVE
-  - `university/` - University screens (disabled)
-  - `admin/` - Admin screens (disabled)
   - `auth/` - Authentication screens
-  - `public/` - Public information screens
-- `contexts/` - React Context providers for state management
-  - `AuthContext.tsx` - Authentication (Student-only in this phase)
-  - `StudentDataContext.tsx` - Student admission data
-  - `UniversityDataContext.tsx` - Present but not used
-  - `AiContext.tsx` - AI assistant state
-- `data/` - Mock data files
+- `contexts/`
+   - `AiContext.tsx` - AI assistant state
+- `data/` - Student types and display utilities
+- `services/` - Backend API clients + Supabase auth
+- `store/` - Zustand auth/student stores
 - `components/` - Reusable UI components
 - `navigation/` - App navigation configuration
 
@@ -131,23 +125,20 @@ If you see `TurboModuleRegistry.getEnforcing(...)` errors:
 - Check `metro.config.js` is resolving from `mobile/node_modules`
 
 ### Import Errors
-If Metro complains about importing from `../src/*`:
-- Verify mock data files are in `mobile/src/data`
+If Metro complains about imports or stale caches:
+- clear Expo cache and restart the bundler
+- verify dependencies are installed and TypeScript passes
 
-## 📚 Mock Data
+## 📚 Data Source
 
-This app uses mock data (no backend) for demonstration purposes:
-- Student admissions data
-- University information
-- Notifications
-- User accounts (student only active)
+This app is backend-driven for the student module. Admissions, watchlists, deadlines, notifications, and dashboard data come from configured backend APIs.
 
 ## 🔮 Future Enhancements
 
 Planned for future phases:
-- Admin module activation
-- University Representative module activation
-- Real backend API integration
+- Admin module implementation
+- University Representative module implementation
+- Expanded backend capabilities
 - Push notifications
 - Offline mode
 - Advanced filtering and search

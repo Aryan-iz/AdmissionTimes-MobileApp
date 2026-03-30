@@ -1,0 +1,119 @@
+# AdmissionTimes Mobile App — Diagnostic Report
+
+Date: 2026-03-13
+Scope: Full codebase review (`src/`, app runtime configuration, auth/session, notifications/push, student flows)
+
+## 1) Executive Summary
+The mobile app is now type-safe (`pnpm typecheck` passes) and several high-impact reliability issues were fixed.
+
+Main risk areas found during review:
+- render side-effects in computed hooks,
+- push-notification runtime behavior differences on web,
+- fragile secure session persistence for large payloads,
+- noisy operational logging and some environment coupling.
+
+## 2) Fixes Applied in This Pass
+
+### A. Render correctness + timer safety
+Fixed side effects inside `useMemo` (state updates + timers) that can cause unstable renders and timer leaks.
+
+Updated files:
+- `src/screens/student/WatchlistScreen.tsx`
+- `src/screens/student/SearchAdmissionsScreen.tsx`
+- `src/screens/student/DeadlineScreen.tsx`
+
+What changed:
+- moved loading spinner timing to `useEffect` with cleanup (`clearTimeout`),
+- kept `useMemo` pure for deterministic filtering,
+- preserved existing UX behavior.
+
+### B. Push/web runtime warning reduction
+Prevented `expo-notifications` runtime initialization on web by lazy-loading only on native platforms.
+
+Updated file:
+- `src/services/pushNotifications.ts`
+
+What changed:
+- dynamic import for `expo-notifications`, `expo-device`, `expo-constants` on native only,
+- no-op subscriptions on web,
+- retained type safety with type-only imports.
+
+### C. Web style deprecation cleanup
+Resolved web warning for deprecated `shadow*` props.
+
+Updated file:
+- `src/components/ui/Header.tsx`
+
+What changed:
+- shadow styles now applied only for iOS/Android via `Platform.select`,
+- avoids web `shadow*` warning path.
+
+### D. Secure session persistence hardening
+Addressed SecureStore payload-size risk (~2KB limit warning).
+
+Updated file:
+- `src/services/supabase.ts`
+
+What changed:
+- large values are stored in AsyncStorage,
+- SecureStore keeps a small pointer for retrieval,
+- remove flow cleans both secure key and async pointer.
+
+### E. Login UX safety
+Reduced unnecessary backend calls on invalid input.
+
+Updated file:
+- `src/screens/auth/LoginScreen.tsx`
+
+What changed:
+- added required-field validation for email/password,
+- trims email before submitting.
+
+### F. Network troubleshooting accuracy
+Made troubleshooting output reflect actual configured backend.
+
+Updated file:
+- `src/services/apiClient.ts`
+
+What changed:
+- dynamic health-check URL based on active `baseURL` (removed stale hardcoded host in hint).
+
+## 3) Remaining Issues (Not Fully Fixable from App Code Alone)
+
+1. Backend reachability timeout (`/auth/me`)
+- Symptom: `timeout of 10000ms exceeded` and network error logs.
+- Root cause class: environment/network/backend service availability.
+- Needed outside app:
+  - backend running and reachable from client network,
+  - bind host `0.0.0.0`,
+  - firewall/open port checks.
+
+2. React Navigation web warning (`props.pointerEvents is deprecated`)
+- Source is dependency internals (`@react-navigation/stack` + RN web rendering path), not app code.
+- Action: dependency upgrade path when stable versions remove warning.
+
+## 4) Observed Code Quality Concerns (Backlog)
+
+These do not currently break typecheck but are worth improving:
+- high volume console logs in stores/services/screens (can be replaced by a centralized logger with levels + env gates),
+- broad `any` usage in some catch blocks and callback signatures,
+- default environment values in app config can increase accidental misconfiguration risk if not documented by deployment profile.
+
+## 5) Recommended Next Cleanup Sprint
+
+Priority 1 (stability):
+- Introduce `logger.ts` (`debug/info/warn/error`) with production-safe gates.
+- Normalize network error mapping for user-friendly auth failure messages.
+
+Priority 2 (type safety):
+- Replace `any` in high-traffic stores (`authStore`, `studentStore`, `supabase` wrappers) with typed error helpers.
+
+Priority 3 (config hygiene):
+- Add explicit startup validation for required env vars and clearer fail-fast messages.
+
+## 6) Validation Status
+- File-level diagnostics on changed files: clean.
+- Full project TypeScript check: PASS.
+
+Command used:
+- `pnpm typecheck`
