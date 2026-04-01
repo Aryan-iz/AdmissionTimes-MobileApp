@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { ScrollView, Text, View, Pressable, TextInput, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
+import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
 
 export default function SearchAdmissionsScreen() {
@@ -29,6 +30,7 @@ export default function SearchAdmissionsScreen() {
   const [compareIds, setCompareIds] = useState<string[]>([])
   const [isLoadingResults, setIsLoadingResults] = useState(false)
   const [searchResults, setSearchResults] = useState(admissions)
+  const lastTrackedQueryRef = useRef<string>('')
 
   useEffect(() => {
     setSearchResults(admissions)
@@ -145,8 +147,78 @@ export default function SearchAdmissionsScreen() {
 
   const handleCompare = () => {
     if (compareIds.length >= 2) {
+      void trackCappedStudentActivitySafe({
+        activity_type: 'compared',
+        entity_type: 'admission_set',
+        entity_id: compareIds.join(','),
+        metadata: {
+          source: 'mobile_search_admissions',
+          compare_count: compareIds.length,
+        },
+      })
       navigation.navigate('StudentCompare', { ids: compareIds })
     }
+  }
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (query.length < 2) return
+
+    const primaryAdmissionId = filteredAdmissions[0]?.id
+    if (!primaryAdmissionId) return
+
+    const queryKey = `${query.toLowerCase()}|${cityFilter}`
+    if (queryKey === lastTrackedQueryRef.current) return
+
+    lastTrackedQueryRef.current = queryKey
+    void trackCappedStudentActivitySafe({
+      activity_type: 'searched',
+      entity_type: 'admission',
+      entity_id: primaryAdmissionId,
+      metadata: {
+        source: 'mobile_search_admissions',
+        query,
+        city_filter: cityFilter || null,
+        result_count: filteredAdmissions.length,
+      },
+    })
+  }, [searchQuery, cityFilter, filteredAdmissions])
+
+  const trackOpenProgramDetail = (admissionId: string) => {
+    void trackCappedStudentActivitySafe({
+      activity_type: 'viewed',
+      entity_type: 'admission',
+      entity_id: admissionId,
+      metadata: {
+        source: 'mobile_search_admissions',
+      },
+    })
+    navigation.navigate('ProgramDetail', { id: admissionId })
+  }
+
+  const trackToggleCompare = (admissionId: string) => {
+    void trackCappedStudentActivitySafe({
+      activity_type: 'compared',
+      entity_type: 'admission',
+      entity_id: admissionId,
+      metadata: {
+        source: 'mobile_search_admissions',
+      },
+    })
+    toggleCompare(admissionId)
+  }
+
+  const trackToggleSaved = (admissionId: string, currentlySaved: boolean) => {
+    void toggleSaved(admissionId)
+    void trackCappedStudentActivitySafe({
+      activity_type: 'saved',
+      entity_type: 'admission',
+      entity_id: admissionId,
+      metadata: {
+        source: 'mobile_search_admissions',
+        saved: !currentlySaved,
+      },
+    })
   }
 
   return (
@@ -306,7 +378,7 @@ export default function SearchAdmissionsScreen() {
                 <View key={admission.id} style={styles.gridCard}>
                   <Pressable
                     style={styles.gridCardInner}
-                    onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
+                    onPress={() => trackOpenProgramDetail(admission.id)}
                   >
                     <View style={styles.cardHeader}>
                       <View style={[styles.universityLogo, { backgroundColor: admission.logoBg }]}>
@@ -335,7 +407,7 @@ export default function SearchAdmissionsScreen() {
                         style={styles.actionButton}
                         onPress={(e) => {
                           e.stopPropagation()
-                          toggleCompare(admission.id)
+                          trackToggleCompare(admission.id)
                         }}
                       >
                         <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
@@ -344,7 +416,7 @@ export default function SearchAdmissionsScreen() {
                         style={styles.actionButton}
                         onPress={(e) => {
                           e.stopPropagation()
-                          toggleSaved(admission.id)
+                          trackToggleSaved(admission.id, isSaved)
                         }}
                       >
                         <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />
@@ -367,7 +439,7 @@ export default function SearchAdmissionsScreen() {
                 <Pressable
                   key={admission.id}
                   style={styles.listCard}
-                  onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
+                  onPress={() => trackOpenProgramDetail(admission.id)}
                 >
                   <View style={styles.listCardContent}>
                     <View style={[styles.universityLogo, { backgroundColor: admission.logoBg }]}>
@@ -396,7 +468,7 @@ export default function SearchAdmissionsScreen() {
                         style={styles.actionButton}
                         onPress={(e) => {
                           e.stopPropagation()
-                          toggleCompare(admission.id)
+                          trackToggleCompare(admission.id)
                         }}
                       >
                         <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
@@ -405,7 +477,7 @@ export default function SearchAdmissionsScreen() {
                         style={styles.actionButton}
                         onPress={(e) => {
                           e.stopPropagation()
-                          toggleSaved(admission.id)
+                          trackToggleSaved(admission.id, isSaved)
                         }}
                       >
                         <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />

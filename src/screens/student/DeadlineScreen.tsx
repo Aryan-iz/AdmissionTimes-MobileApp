@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
 import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
 import { PremiumHeader } from '../../components/ui'
+import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
 
 const DATE_RANGE_OPTIONS = [
@@ -125,12 +126,36 @@ export default function DeadlineScreen() {
   }
 
   const handleToggleAlert = async (id: string) => {
+    const admission = admissions.find((item) => item.id === id)
+    const nextEnabled = !admission?.alertEnabled
+
     setPendingAlertIds((prev) => ({ ...prev, [id]: true }))
     try {
       await toggleAlert(id)
+      void trackCappedStudentActivitySafe({
+        activity_type: 'alert',
+        entity_type: 'admission',
+        entity_id: id,
+        metadata: {
+          source: 'mobile_deadline_screen',
+          enabled: nextEnabled,
+        },
+      })
     } finally {
       setPendingAlertIds((prev) => ({ ...prev, [id]: false }))
     }
+  }
+
+  const handleOpenProgramDetail = (admissionId: string) => {
+    void trackCappedStudentActivitySafe({
+      activity_type: 'viewed',
+      entity_type: 'admission',
+      entity_id: admissionId,
+      metadata: {
+        source: 'mobile_deadline_screen',
+      },
+    })
+    navigation.navigate('ProgramDetail', { id: admissionId })
   }
 
   return (
@@ -273,7 +298,7 @@ export default function DeadlineScreen() {
                         <Pressable
                           key={deadline.id}
                           style={styles.deadlineCard}
-                          onPress={() => navigation.navigate('ProgramDetail', { id: deadline.id })}
+                          onPress={() => handleOpenProgramDetail(deadline.id)}
                         >
                           <View style={styles.deadlineHeader}>
                             <View style={[styles.universityLogo, { backgroundColor: deadline.logoBg }]}>
@@ -356,7 +381,7 @@ export default function DeadlineScreen() {
                         <Pressable
                           key={deadline.id}
                           style={[styles.deadlineCard, styles.deadlineCardClosed]}
-                          onPress={() => navigation.navigate('ProgramDetail', { id: deadline.id })}
+                          onPress={() => handleOpenProgramDetail(deadline.id)}
                         >
                           <View style={styles.deadlineHeader}>
                             <View style={[styles.universityLogo, { backgroundColor: deadline.logoBg }]}>

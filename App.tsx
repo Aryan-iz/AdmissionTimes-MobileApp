@@ -51,9 +51,40 @@ export default function App() {
   const appState = useRef(AppState.currentState)
   const previousStudentUserIdRef = useRef<string | null>(null)
   const registeredTokenKeyRef = useRef<string | null>(null)
+  const recentSeenNotificationIdsRef = useRef<Map<string, number>>(new Map())
   const user = useAuthStore(state => state.user)
   const refreshNotifications = useStudentStore(state => state.refreshNotifications)
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
+
+  const pruneSeenNotificationIds = () => {
+    const now = Date.now()
+    const windowMs = 60_000
+    recentSeenNotificationIdsRef.current.forEach((seenAt, key) => {
+      if (now - seenAt > windowMs) {
+        recentSeenNotificationIdsRef.current.delete(key)
+      }
+    })
+  }
+
+  const markNotificationAsSeen = (notificationId?: string | null) => {
+    if (!notificationId) return
+    pruneSeenNotificationIds()
+    recentSeenNotificationIdsRef.current.set(notificationId, Date.now())
+  }
+
+  const hasSeenNotificationRecently = (notificationId?: string | null) => {
+    if (!notificationId) return false
+    pruneSeenNotificationIds()
+    return recentSeenNotificationIdsRef.current.has(notificationId)
+  }
+
+  const extractNotificationId = (data: Record<string, unknown>) => {
+    return (
+      (data.notification_id as string | undefined) ||
+      (data.notificationId as string | undefined) ||
+      null
+    )
+  }
 
   useEffect(() => {
     // Set status bar on mount
@@ -101,12 +132,15 @@ export default function App() {
 
     initializePush()
 
-    const foregroundSubscription: EventSubscription = addForegroundNotificationListener(() => {
+    const foregroundSubscription: EventSubscription = addForegroundNotificationListener((notification) => {
+      const data = (notification.request.content.data || {}) as Record<string, unknown>
+      markNotificationAsSeen(extractNotificationId(data))
       refreshNotifications().catch(() => {})
     })
 
     const responseSubscription: EventSubscription = addNotificationResponseListener((response: NotificationResponse) => {
       const data = response.notification.request.content.data || {}
+      markNotificationAsSeen(extractNotificationId(data as Record<string, unknown>))
       const admissionId =
         (data.admissionId as string | undefined) ||
         (data.admission_id as string | undefined) ||
@@ -200,15 +234,38 @@ export default function App() {
         onInsert: (payload) => {
           refresh()
 
+          const notificationId = payload.id || null
+          if (hasSeenNotificationRecently(notificationId)) {
+            return
+          }
+
+          // Avoid duplicate banners when Expo push is active.
+          if (config.enablePushNotifications && expoPushToken) {
+            return
+          }
+
           if (config.enablePushNotifications) {
             showLocalNotification(
               payload.title || 'New Notification',
               payload.message || 'You have a new update.',
               {
+                notification_id: payload.id,
                 admissionId: payload.related_entity_type === 'admission' ? payload.related_entity_id : undefined,
                 related_entity_id: payload.related_entity_id,
               }
             ).catch(() => {})
+            markNotificationAsSeen(notificationId)
+          } else {
+            showLocalNotification(
+              payload.title || 'New Notification',
+              payload.message || 'You have a new update.',
+              {
+                notification_id: payload.id,
+                admissionId: payload.related_entity_type === 'admission' ? payload.related_entity_id : undefined,
+                related_entity_id: payload.related_entity_id,
+              }
+            ).catch(() => {})
+            markNotificationAsSeen(notificationId)
           }
         },
         onError: (status) => {
@@ -224,7 +281,7 @@ export default function App() {
         unsubscribeRealtime().catch(() => {})
       }
     }
-  }, [refreshNotifications, user?.id, user?.role])
+  }, [expoPushToken, refreshNotifications, user?.id, user?.role])
 
   return (
     <SafeAreaProvider>

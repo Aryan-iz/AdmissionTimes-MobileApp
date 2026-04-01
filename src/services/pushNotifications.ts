@@ -6,6 +6,7 @@ type NotificationsModule = typeof import('expo-notifications')
 
 let notificationsModulePromise: Promise<NotificationsModule | null> | null = null
 let pushUnsupportedWarned = false
+let pushConfigurationWarned = false
 
 const warnPushUnsupportedOnce = (reason: string) => {
   if (pushUnsupportedWarned) {
@@ -14,6 +15,23 @@ const warnPushUnsupportedOnce = (reason: string) => {
 
   pushUnsupportedWarned = true
   console.warn(`⚠️ [Push] Push notifications unavailable in this runtime (${reason}).`)
+}
+
+const warnPushConfigurationOnce = (message: string) => {
+  if (pushConfigurationWarned) {
+    return
+  }
+
+  pushConfigurationWarned = true
+  console.warn(`⚠️ [Push] ${message}`)
+}
+
+const isAndroidFirebaseNotInitializedError = (message: string): boolean => {
+  return (
+    message.includes('Default FirebaseApp is not initialized') ||
+    message.includes('FirebaseApp.initializeApp') ||
+    message.includes('fcm-credentials')
+  )
 }
 
 const isExpoGoStoreClient = (): boolean => {
@@ -147,8 +165,20 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
     return null
   }
 
-  const token = (await notifications.getExpoPushTokenAsync({ projectId })).data
-  return token
+  try {
+    const token = (await notifications.getExpoPushTokenAsync({ projectId })).data
+    return token
+  } catch (error: any) {
+    const message = String(error?.message || error)
+    if (Platform.OS === 'android' && isAndroidFirebaseNotInitializedError(message)) {
+      warnPushConfigurationOnce(
+        'Android FCM is not configured for this build. Add google-services.json in app config, rebuild the app, and test again.'
+      )
+      return null
+    }
+
+    throw error
+  }
 }
 
 export const addForegroundNotificationListener = (

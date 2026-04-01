@@ -18,8 +18,9 @@
     },
     "android": {
       "package": "com.bankai_senbonzakura.admissiontimes",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/app-icon.png",
+        "foregroundImage": "./assets/adaptive-foreground.png",
         "backgroundColor": "#2563EB"
       }
     },
@@ -39,7 +40,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/app-icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#2563EB"
         }
       ]

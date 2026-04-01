@@ -7,6 +7,7 @@ import { useStudentStore } from '../../store'
 import { calculateDaysRemaining } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 import { ReminderModal } from '../../components/student'
+import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
 
 type ProgramDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProgramDetail'>
@@ -30,6 +31,19 @@ export default function ProgramDetailScreen() {
   }, [])
 
   const program = route.params?.id ? getAdmissionById(route.params.id) : undefined
+
+  useEffect(() => {
+    if (!program?.id) return
+
+    void trackCappedStudentActivitySafe({
+      activity_type: 'viewed',
+      entity_type: 'admission',
+      entity_id: program.id,
+      metadata: {
+        source: 'mobile_program_detail',
+      },
+    })
+  }, [program?.id])
   
   // Get related programs (same degree type, different university, limit 3)
   const relatedPrograms = useMemo(() => {
@@ -94,9 +108,26 @@ export default function ProgramDetailScreen() {
     }
 
     await Linking.openURL(program.officialUrl)
+    void trackCappedStudentActivitySafe({
+      activity_type: 'searched',
+      entity_type: 'admission',
+      entity_id: program.id,
+      metadata: {
+        source: 'mobile_program_detail_apply',
+        official_url: program.officialUrl,
+      },
+    })
   }
 
   const handleCompare = () => {
+    void trackCappedStudentActivitySafe({
+      activity_type: 'compared',
+      entity_type: 'admission',
+      entity_id: program.id,
+      metadata: {
+        source: 'mobile_program_detail',
+      },
+    })
     navigation.navigate('StudentCompare', { ids: [program.id] })
   }
 
@@ -105,8 +136,22 @@ export default function ProgramDetailScreen() {
   }
 
   const handleConfirmReminder = async () => {
+    const wasAlertEnabled = program.alertEnabled
+
     if (!program.alertEnabled) {
       await toggleAlert(program.id)
+    }
+
+    if (!wasAlertEnabled) {
+      void trackCappedStudentActivitySafe({
+        activity_type: 'alert',
+        entity_type: 'admission',
+        entity_id: program.id,
+        metadata: {
+          source: 'mobile_program_detail',
+          enabled: true,
+        },
+      })
     }
 
     Alert.alert(

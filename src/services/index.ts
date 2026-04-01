@@ -14,6 +14,8 @@ export { admissionsService } from './admissionsService';
 export { watchlistsService } from './watchlistsService';
 export { notificationsService } from './notificationsService';
 export { deadlinesService } from './deadlinesService';
+export { recommendationsService } from './recommendationsService';
+export { activityService, trackActivitySafe, trackCappedStudentActivitySafe } from './activityService';
 export {
 	setupNotificationChannel,
 	registerForPushNotifications,
