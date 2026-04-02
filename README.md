@@ -1,149 +1,215 @@
-# AdmissionTimes (Mobile)
+# AdmissionTimes Mobile App
 
-This is a React Native (Expo + TypeScript) mobile application for the Admission Times platform.
+React Native mobile app built with Expo and TypeScript for the AdmissionTimes project.
 
-## 🎯 Current Scope (FYP Phase)
+## Scope
 
-**This mobile app implements ONLY the STUDENT MODULE.**
+This mobile app currently targets the Student module.
 
-Admin and University Representative modules are intentionally excluded in this phase and planned as future work. This is a deliberate scope decision for the Final Year Project demonstration.
+## Quick Answer: Do I Repeat Setup Every Time?
 
-## ✅ Student Module Features
+One-time only:
+1. Install Node.js and pnpm.
+2. Install dependencies with pnpm.
+3. Install EAS CLI.
+4. Login to Expo CLI.
 
-The following features are fully functional for Student users:
+Repeat every development/testing session:
+1. Start Metro bundler.
+2. Re-open the app on device/emulator.
+3. Keep backend running if you need live API data.
 
-- ✅ **Authentication** - Student login via Supabase + backend identity (`/auth/me`)
-- ✅ **Dashboard** - Personalized stats, recommendations, and quick actions
-- ✅ **Search Admissions** - Search, filter, and browse available programs
-- ✅ **Compare Programs** - Side-by-side comparison (up to 4 programs)
-- ✅ **Watchlist** - Save and track favorite programs
-- ✅ **Deadlines** - View upcoming admission deadlines
-- ✅ **Notifications** - Admission updates and system alerts
-- ✅ **Program Details** - Detailed view of each admission program
-- ✅ **AI Assistant** - Context-aware chat assistant for guidance
-- ✅ **Backend Integration** - Student data from backend APIs (no in-app mock datasets)
+You do not repeat full installation every time. You do repeat Metro startup every time you begin a new run session.
 
-## 🚫 Out of Scope (Current Phase)
+## Prerequisites
 
-The following modules are **not implemented in this mobile app phase**:
+1. Node.js: version >=20 and <23
+2. pnpm installed globally
+3. Android Studio emulator or physical Android device
+4. Expo account with access to this project
+5. Optional for cloud builds: EAS CLI
 
-- ❌ Admin Dashboard
-- ❌ Admin Verification Center
-- ❌ Admin Analytics
-- ❌ Admin Scraper Jobs Monitor
-- ❌ University Dashboard
-- ❌ University Manage Admissions
-- ❌ University Verification Center
+## Project Identity (Current)
 
-These modules are planned for future phases and are not included in the current code paths.
+1. Expo slug: admissiontimes
+2. EAS project ID: 49a0e653-a0c9-481d-a9bb-6b6f02cb4ec0
+3. Android package: com.bankai_senbonzakura.admissiontimes
 
-## 📱 Account Access
+## One-Time Setup on a New Machine
 
-Use a valid student account from your configured backend/Supabase environment.
-
-> **Note:** University and Admin role routing is not included in this version.
-
-## 🏗️ Architecture
-
-This folder is a React Native (Expo) structure that mirrors the web app architecture.
-
-### Project Structure
-- `screens/` (equivalent to web `pages/`)
-  - `student/` - Student feature screens ✅ ACTIVE
-  - `auth/` - Authentication screens
-- `contexts/`
-   - `AiContext.tsx` - AI assistant state
-- `data/` - Student types and display utilities
-- `services/` - Backend API clients + Supabase auth
-- `store/` - Zustand auth/student stores
-- `components/` - Reusable UI components
-- `navigation/` - App navigation configuration
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v18 or higher)
-- pnpm (or npm)
-- Expo Go app on your mobile device (for testing)
-
-### Installation
-
-1. Navigate to the mobile folder:
-   ```bash
-   cd mobile
-   ```
+1. Open terminal in mobile repo:
+```bash
+cd E:\fyp\AdmissionTimes-MobileApp
+```
 
 2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-3. Start the Expo development server:
-   ```bash
-   pnpm start
-   ```
-
-4. Scan the QR code with:
-   - **iOS**: Camera app
-   - **Android**: Expo Go app
-
-### Building for Production
-
-Build the app for Android or iOS:
 ```bash
-eas build --platform android
-eas build --platform ios
+pnpm install
 ```
 
-## 🔧 Development Notes
+3. Verify TypeScript build health:
+```bash
+pnpm typecheck
+```
 
-### Working Directory
-**Recommended:** Always run Expo from the `mobile/` folder for the cleanest setup.
-- ✅ `cd mobile && pnpm start`
-- ⚠️ Running from repo root may cause dependency resolution warnings
+4. Install EAS CLI (once):
+```bash
+npm install -g eas-cli
+```
 
-### pnpm + Metro Configuration
-This project uses a local `index.js` entrypoint (see `main` in `package.json`) because pnpm can cause Metro to resolve `expo/AppEntry.js` incorrectly from the pnpm store path.
+5. Login Expo CLI (once per machine/session if token not cached):
+```bash
+eas login
+eas whoami
+eas project:info
+```
 
-## 🐛 Troubleshooting
+Expected project info:
+- fullName: @bankai_senbonzakura/admissiontimes
+- ID: 49a0e653-a0c9-481d-a9bb-6b6f02cb4ec0
 
-### SDK Version Issues
-If Expo Go says the project SDK is incompatible:
-- Ensure `app.json` has `sdkVersion: 54.0.0` 
-- Ensure `expo` package is `~54.0.0`
+## Daily Run Scenarios
 
-### Missing Modules
-If bundling fails with missing modules:
+## Scenario A: Fast Local Development (Expo Go)
+
+Use this for UI and non-push feature testing.
+
+1. Start Metro:
+```bash
+pnpm start
+```
+
+2. Open in Expo Go:
+- Android: scan QR in Expo Go.
+- iOS: scan QR with Camera or Expo Go.
+
+Notes:
+1. Metro must run while app is connected.
+2. If Metro stops, app hot-reload/dev sync stops.
+3. For push-notification validation, prefer Scenario B or C.
+
+## Scenario B: Development Client Build (Best for native feature debugging)
+
+Use this when Expo Go limitations block testing.
+
+1. Build development client:
+```bash
+eas build --platform android --profile development
+```
+
+2. Install resulting APK on physical device.
+
+3. Start Metro for dev client:
+```bash
+npx expo start --dev-client
+```
+
+4. Open installed dev client app.
+
+Repeat rules:
+1. Build step is not required every day unless native deps/config changed.
+2. Metro start is required each active debug session.
+
+## Scenario C: Internal Tester Install (No Metro required at runtime)
+
+Use this for realistic QA and teammate installs.
+
+1. Build preview artifact:
+```bash
+eas build --platform android --profile preview
+```
+
+2. Share/install artifact from EAS build link.
+
+Repeat rules:
+1. Rebuild only when app changes need a new binary.
+2. End users/testers do not need Metro for normal app usage.
+
+## Scenario D: Production Release Build
+
+1. Build production:
+```bash
+eas build --platform android --profile production
+```
+
+2. Submit/distribute via your release process.
+
+## Push Notification Validation Flow
+
+For reliable push checks, use Scenario B or C on a physical device.
+
+1. Login in app as student and allow notification permission.
+2. Confirm token registration in backend DB (`push_notification_tokens`).
+3. Run backend smoke test:
+```bash
+pnpm --dir E:\fyp\admission-times-backend smoke:push
+```
+4. Validate delivery for:
+- foreground
+- background
+- app closed
+
+## Common Questions
+
+Q: Do I need `eas login` every time?
+A: Usually no. Only when session/token expires, machine changes, or you logged out.
+
+Q: Do I need `pnpm install` every time?
+A: No. Only first setup or when dependencies change.
+
+Q: Do I need Metro every time?
+A: Yes for Expo Go and dev-client live development. No for installed preview/production binaries.
+
+Q: Can I test push fully in Expo Go?
+A: Do not rely on Expo Go for full Android push validation in this project. Use dev/preview build on a physical device.
+
+Q: Why does the app sometimes require the same Wi-Fi network?
+A: That is only for local development with Metro (Expo Go or dev-client with local LAN URL). Installed preview/production builds do not require same Wi-Fi when backend APIs are publicly reachable.
+
+Q: Can users run the app from any network in future production?
+A: Yes. Deploy backend/API to public HTTPS, configure production base URLs, build preview/production app, and users can run from mobile data or any Wi-Fi without Metro.
+
+Q: Why do app icon and push icon look different on Android?
+A: Android adaptive launcher icons and notification tray icons have different rendering rules. This project uses separate assets for each: adaptive foreground and monochrome notification icon.
+
+Q: Should Firebase JSON keys be committed?
+A: No. Keep Firebase credential files local or in secure CI secrets. This repository ignores service-account and google-services credential files by default.
+
+## Troubleshooting
+
+1. Not logged in error from EAS:
+```bash
+eas login
+eas whoami
+eas project:info
+```
+
+2. Dependency mismatch:
 ```bash
 npx expo install --fix
-pnpm add @babel/runtime
+pnpm install
 ```
 
-### Metro Resolution Issues
-If you see `TurboModuleRegistry.getEnforcing(...)` errors:
-- Make sure you start Expo from inside `mobile/`
-- Check `metro.config.js` is resolving from `mobile/node_modules`
+3. Metro stale cache:
+```bash
+pnpm start -- --clear
+```
 
-### Import Errors
-If Metro complains about imports or stale caches:
-- clear Expo cache and restart the bundler
-- verify dependencies are installed and TypeScript passes
+4. Build fails due to credentials/permissions:
+- Ensure account has access to @bankai_senbonzakura/admissiontimes.
+- Ask project owner to add your Expo account role if needed.
 
-## 📚 Data Source
+## Useful Commands Reference
 
-This app is backend-driven for the student module. Admissions, watchlists, deadlines, notifications, and dashboard data come from configured backend APIs.
-
-## 🔮 Future Enhancements
-
-Planned for future phases:
-- Admin module implementation
-- University Representative module implementation
-- Expanded backend capabilities
-- Push notifications
-- Offline mode
-- Advanced filtering and search
-- Social features (sharing, reviews)
-
-## 📄 License
-
-This is a Final Year Project demonstration application.
+```bash
+pnpm start
+pnpm android
+pnpm ios
+pnpm web
+pnpm typecheck
+eas whoami
+eas project:info
+eas build --platform android --profile development
+eas build --platform android --profile preview
+eas build --platform android --profile production
+```

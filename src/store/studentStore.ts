@@ -14,7 +14,10 @@ import { admissionsService } from '../services/admissionsService'
 import { dashboardService } from '../services/dashboardService'
 import { notificationsService } from '../services/notificationsService'
 import { watchlistsService } from '../services/watchlistsService'
+import { recommendationsService } from '../services/recommendationsService'
 import type { Admission, Notification, Watchlist } from '../services/types'
+
+const RECOMMENDATION_MIN_SCORE = 50
 
 interface StudentStats {
   active_admissions: number
@@ -249,7 +252,7 @@ const deriveStats = (admissions: StudentAdmission[], notifications: StudentNotif
   const active = admissions.filter(a => a.programStatus === 'Open' || a.programStatus === 'Closing Soon').length
   const saved = admissions.filter(a => a.saved).length
   const upcoming = admissions.filter(a => a.daysRemaining >= 0 && a.daysRemaining <= 7).length
-  const recommendations = admissions.filter(a => (a.matchNumeric || 0) >= 85).length
+  const recommendations = admissions.filter(a => (a.matchNumeric || 0) >= RECOMMENDATION_MIN_SCORE).length
   const unread = notifications.filter(n => !n.read).length
   const urgent = admissions.filter(a => a.daysRemaining >= 0 && a.daysRemaining <= 3 && a.programStatus !== 'Closed').length
 
@@ -312,8 +315,35 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
           notificationsService.list({ page: 1, limit: 50 }),
         ])
 
+        let recommendations = dashboardResponse.data.recommended_programs || []
+
+        // Avoid unnecessary recommendation endpoint load: only fetch direct recommendations
+        // if dashboard aggregate currently has none.
+        if (recommendations.length === 0) {
+          try {
+            const recommendationResponse = await recommendationsService.getRecommendations(10, RECOMMENDATION_MIN_SCORE)
+            const recommendationMap = new Map(
+              (recommendationResponse.data.recommendations || []).map((item) => [item.admission_id, item])
+            )
+
+            if (recommendationMap.size > 0) {
+              recommendations = admissionsResponse.data
+                .filter((admission) => recommendationMap.has(admission.id))
+                .map((admission) => {
+                  const rec = recommendationMap.get(admission.id)
+                  return {
+                    ...admission,
+                    match_score: rec?.score ?? admission.match_score,
+                    match_reason: rec?.reason ?? admission.match_reason,
+                  }
+                })
+            }
+          } catch (recommendationError) {
+            console.warn('⚠️ [studentStore] Fallback recommendations fetch failed:', recommendationError)
+          }
+        }
+
         const watchlistIndex = buildWatchlistIndex(watchlistsResponse.data)
-        const recommendations = dashboardResponse.data.recommended_programs || []
         const admissionsMap = new Map<string, Admission>()
 
         admissionsResponse.data.forEach((admission) => {
@@ -322,9 +352,20 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
 
         recommendations.forEach((admission) => {
           const key = String(admission.id)
-          if (!admissionsMap.has(key)) {
+          const existing = admissionsMap.get(key)
+          if (!existing) {
             admissionsMap.set(key, admission)
+            return
           }
+
+          // Preserve recommendation signals when the same admission already exists
+          // in the base admission catalog response.
+          admissionsMap.set(key, {
+            ...existing,
+            ...admission,
+            match_score: admission.match_score ?? existing.match_score,
+            match_reason: admission.match_reason ?? existing.match_reason,
+          })
         })
 
         const admissionSource = Array.from(admissionsMap.values())

@@ -13,6 +13,8 @@ import { NewAdmissionSlider } from '../../components/student'
 import { useAi } from '../../contexts/AiContext'
 import { Feather } from '@expo/vector-icons'
 
+const RECOMMENDATION_MIN_SCORE = 50
+
 export default function StudentDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const admissions = useStudentStore(state => state.admissions)
@@ -83,7 +85,7 @@ export default function StudentDashboardScreen() {
   const recommendedAdmissions = useMemo(() => {
     return admissions
       .filter((a) => a.programStatus !== 'Closed')
-      .filter((a) => (a.matchNumeric || 0) >= 75)
+      .filter((a) => (a.matchNumeric || 0) >= RECOMMENDATION_MIN_SCORE)
       .sort((a, b) => (b.matchNumeric || 0) - (a.matchNumeric || 0))
   }, [admissions])
 

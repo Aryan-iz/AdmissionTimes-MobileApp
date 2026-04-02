@@ -30,6 +30,13 @@ lerna-debug.log*
 .env*.local
 .env
 
+# Firebase / push credentials
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json
+*service-account*.json
+credentials.json
+
 # Vercel
 .vercel
 
