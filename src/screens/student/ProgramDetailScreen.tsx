@@ -16,7 +16,7 @@ type ProgramDetailScreenNavigationProp = StackNavigationProp<RootStackParamList,
 export default function ProgramDetailScreen() {
   const route = useRoute<ProgramDetailScreenRouteProp>()
   const navigation = useNavigation<ProgramDetailScreenNavigationProp>()
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Important Dates'>('Overview')
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Eligibility' | 'Important Dates'>('Overview')
   const [isLoading, setIsLoading] = useState(true)
   const [reminderModalVisible, setReminderModalVisible] = useState(false)
   const admissions = useStudentStore(state => state.admissions)
@@ -94,27 +94,30 @@ export default function ProgramDetailScreen() {
 
   const statusColors = getStatusColor(program.programStatus)
   const daysRemaining = calculateDaysRemaining(program.deadline)
+  const applyUrl = program.admissionPortalLink || program.officialUrl
+  const websiteUrl = program.universityWebsiteUrl
+  const portalUrl = program.admissionPortalLink
 
   const handleApplyNow = async () => {
-    if (!program.officialUrl) {
+    if (!applyUrl) {
       Alert.alert('Apply Now', 'Official application link is not available for this program yet.')
       return
     }
 
-    const canOpen = await Linking.canOpenURL(program.officialUrl)
+    const canOpen = await Linking.canOpenURL(applyUrl)
     if (!canOpen) {
       Alert.alert('Apply Now', 'Unable to open the official application link on this device.')
       return
     }
 
-    await Linking.openURL(program.officialUrl)
+    await Linking.openURL(applyUrl)
     void trackCappedStudentActivitySafe({
       activity_type: 'searched',
       entity_type: 'admission',
       entity_id: program.id,
       metadata: {
         source: 'mobile_program_detail_apply',
-        official_url: program.officialUrl,
+        official_url: applyUrl,
       },
     })
   }
@@ -211,7 +214,7 @@ export default function ProgramDetailScreen() {
 
           {/* Tabs */}
           <View style={styles.tabContainer}>
-            {(['Overview', 'Important Dates'] as const).map((tab) => {
+            {(['Overview', 'Eligibility', 'Important Dates'] as const).map((tab) => {
               const isActive = activeTab === tab
               return (
                 <Pressable
@@ -258,6 +261,24 @@ export default function ProgramDetailScreen() {
               </View>
             )}
 
+            {activeTab === 'Eligibility' && (
+              <View>
+                <Text style={styles.sectionTitle}>Eligibility Requirements</Text>
+
+                <View style={styles.overviewSection}>
+                  <Text style={styles.subsectionTitle}>Degree Type</Text>
+                  <Text style={styles.descriptionText}>{program.degree}</Text>
+                </View>
+
+                <View style={styles.overviewSection}>
+                  <Text style={styles.subsectionTitle}>General Requirements</Text>
+                  <Text style={styles.descriptionText}>
+                    {program.eligibility || 'Please contact the university directly for specific eligibility requirements and required documents for this program.'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {activeTab === 'Important Dates' && (
               <View>
                 <Text style={styles.sectionTitle}>Important Dates</Text>
@@ -289,21 +310,33 @@ export default function ProgramDetailScreen() {
           {/* Official Links */}
           <View style={styles.officialLinksCard}>
             <Text style={styles.officialLinksTitle}>Official Links</Text>
-            {program.officialUrl ? (
+            {websiteUrl ? (
               <Pressable 
                 style={styles.officialLinkButton}
-                onPress={() => Linking.openURL(program.officialUrl!)}
+                onPress={() => Linking.openURL(websiteUrl)}
               >
                 <Feather name="globe" size={16} color="#FFFFFF" style={styles.officialLinkButtonIcon} />
-                <Text style={styles.officialLinkButtonText}>Visit Official Website</Text>
+                <Text style={styles.officialLinkButtonText}>University Website</Text>
               </Pressable>
-            ) : (
+            ) : null}
+
+            {portalUrl ? (
+              <Pressable
+                style={[styles.officialLinkButton, styles.portalLinkButton]}
+                onPress={() => Linking.openURL(portalUrl)}
+              >
+                <Feather name="external-link" size={16} color="#FFFFFF" style={styles.officialLinkButtonIcon} />
+                <Text style={styles.officialLinkButtonText}>Admission Portal Link</Text>
+              </Pressable>
+            ) : null}
+
+            {!websiteUrl && !portalUrl ? (
               <View style={styles.noLinkCard}>
                 <Text style={styles.noLinkText}>
-                  Official website link not available. Please contact the university directly for more information.
+                  Official links are not available. Please contact the university directly for more information.
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -564,6 +597,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#FFFFFF',
+  },
+  portalLinkButton: {
+    marginTop: 8,
+    backgroundColor: '#10B981',
   },
   noLinkCard: {
     backgroundColor: '#F9FAFB',
