@@ -114,6 +114,18 @@ const degreeTypeMap: Record<string, StudentAdmission['degreeType']> = {
   MPhil: 'MPhil',
 }
 
+const readString = (value: unknown): string | undefined => {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+const readStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+}
+
 const toNotificationType = (notification: Notification): NotificationType => {
   const category = String(notification.category || '').toLowerCase()
   const title = String(notification.title || '').toLowerCase()
@@ -206,6 +218,72 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
   const degree = admission.degree_level || 'Unknown'
   const location = admission.location || 'Unknown Location'
   const city = location.split(',')[0]?.trim() || 'Unknown'
+  const requirements =
+    admission.requirements && typeof admission.requirements === 'object' && !Array.isArray(admission.requirements)
+      ? (admission.requirements as Record<string, any>)
+      : {}
+  const requirementLinks =
+    requirements.links && typeof requirements.links === 'object' && !Array.isArray(requirements.links)
+      ? (requirements.links as Record<string, any>)
+      : {}
+
+  const officialLinks = [
+    ...readStringArray(requirements.officialLinks),
+    ...readStringArray(requirementLinks.officialLinks),
+  ]
+
+  const admissionPortalLink =
+    readString(requirements.admissionPortalLink) ||
+    readString(requirements.admission_portal_link) ||
+    readString(requirements.portalLink) ||
+    readString(requirementLinks.admissionPortalLink) ||
+    readString(requirementLinks.admission_portal_link) ||
+    readString(requirementLinks.portalLink)
+
+  const universityWebsiteUrl =
+    readString(requirements.websiteUrl) ||
+    readString(requirements.website_url) ||
+    readString(requirements.officialWebsite) ||
+    readString(requirementLinks.websiteUrl) ||
+    readString(requirementLinks.website_url) ||
+    readString(requirementLinks.officialWebsite)
+
+  const officialUrl = admissionPortalLink || universityWebsiteUrl || officialLinks[0] || undefined
+
+  const eligibilityRecord =
+    requirements.eligibility && typeof requirements.eligibility === 'object' && !Array.isArray(requirements.eligibility)
+      ? (requirements.eligibility as Record<string, any>)
+      : {}
+  const criteriaRecord =
+    requirements.criteria && typeof requirements.criteria === 'object' && !Array.isArray(requirements.criteria)
+      ? (requirements.criteria as Record<string, any>)
+      : {}
+
+  const eligibility =
+    readString(requirements.eligibility) ||
+    readString(eligibilityRecord.text) ||
+    readString(eligibilityRecord.description) ||
+    readString(eligibilityRecord.value) ||
+    readString(requirements.eligibilityCriteria) ||
+    readString(requirements.eligibility_criteria) ||
+    readString(requirements.generalRequirements) ||
+    readString(requirements.criteria) ||
+    readString(criteriaRecord.text) ||
+    readString(criteriaRecord.description) ||
+    readString(criteriaRecord.value) ||
+    readString(requirements.requirements) ||
+    admission.eligibility ||
+    undefined
+
+  const rawStatus = String(admission.verification_status || '').toLowerCase()
+  const status: AdmissionStatus =
+    rawStatus === 'verified'
+      ? 'Verified'
+      : rawStatus === 'rejected'
+        ? 'Closed'
+        : rawStatus === 'pending' || rawStatus === 'draft'
+          ? 'Pending'
+          : 'Pending'
 
   return {
     id: admission.id.toString(),
@@ -221,14 +299,17 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
     feeNumeric: admission.application_fee || 0,
     location,
     city,
-    status: admission.verification_status === 'verified' ? ('Verified' as AdmissionStatus) : ('Pending' as AdmissionStatus),
+    status,
     programStatus,
     updated: admission.updated_at || admission.created_at,
     alertEnabled: watchlistEntry?.alertOptIn ?? admission.alert_enabled ?? false,
     saved: Boolean(watchlistEntry || admission.saved),
     matchNumeric: admission.match_score || 0,
     logoBg: '#2563EB',
-    officialUrl: admission.requirements?.officialLinks?.[0],
+    officialUrl,
+    universityWebsiteUrl,
+    admissionPortalLink,
+    eligibility,
     aiSummary: admission.match_reason || undefined,
   }
 }
@@ -310,10 +391,33 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
       try {
         const [dashboardResponse, admissionsResponse, watchlistsResponse, notificationsResponse] = await Promise.all([
           dashboardService.getStudentDashboard(),
-          admissionsService.list({ page: 1, limit: 100 }),
+          Promise.allSettled([
+            admissionsService.list({ page: 1, limit: 100, verification_status: 'verified' }),
+            admissionsService.list({ page: 1, limit: 100, verification_status: 'pending' }),
+          ]),
           watchlistsService.list({ page: 1, limit: 100 }),
           notificationsService.list({ page: 1, limit: 50 }),
         ])
+
+        const admissionsData = new Map<string, Admission>()
+        const verifiedResult = admissionsResponse[0]
+        const pendingResult = admissionsResponse[1]
+
+        if (verifiedResult.status === 'fulfilled') {
+          verifiedResult.value.data.forEach((admission) => {
+            admissionsData.set(String(admission.id), admission)
+          })
+        }
+
+        if (pendingResult.status === 'fulfilled') {
+          pendingResult.value.data.forEach((admission) => {
+            admissionsData.set(String(admission.id), admission)
+          })
+        }
+
+        if (pendingResult.status === 'rejected') {
+          console.warn('⚠️ [studentStore] Pending admissions fetch failed, continuing with verified admissions only')
+        }
 
         let recommendations = dashboardResponse.data.recommended_programs || []
 
@@ -327,9 +431,10 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
             )
 
             if (recommendationMap.size > 0) {
-              recommendations = admissionsResponse.data
-                .filter((admission) => recommendationMap.has(admission.id))
-                .map((admission) => {
+              const candidateAdmissions = Array.from(admissionsData.values())
+              recommendations = candidateAdmissions
+                .filter((admission: Admission) => recommendationMap.has(admission.id))
+                .map((admission: Admission) => {
                   const rec = recommendationMap.get(admission.id)
                   return {
                     ...admission,
@@ -346,7 +451,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         const watchlistIndex = buildWatchlistIndex(watchlistsResponse.data)
         const admissionsMap = new Map<string, Admission>()
 
-        admissionsResponse.data.forEach((admission) => {
+        Array.from(admissionsData.values()).forEach((admission) => {
           admissionsMap.set(String(admission.id), admission)
         })
 
@@ -690,17 +795,37 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
   searchAdmissions: async (filters, options) => {
     try {
       const safeLimit = Math.min(filters?.limit || 100, 100)
-      const response = await admissionsService.list({
-        search: filters?.search,
-        location: filters?.city,
-        degree_level: filters?.degreeLevel,
-        field_of_study: filters?.fieldOfStudy,
-        page: filters?.page || 1,
-        limit: safeLimit,
-      })
+      const [verifiedResult, pendingResult] = await Promise.allSettled([
+        admissionsService.list({
+          search: filters?.search,
+          location: filters?.city,
+          degree_level: filters?.degreeLevel,
+          field_of_study: filters?.fieldOfStudy,
+          verification_status: 'verified',
+          page: filters?.page || 1,
+          limit: safeLimit,
+        }),
+        admissionsService.list({
+          search: filters?.search,
+          location: filters?.city,
+          degree_level: filters?.degreeLevel,
+          field_of_study: filters?.fieldOfStudy,
+          verification_status: 'pending',
+          page: filters?.page || 1,
+          limit: safeLimit,
+        }),
+      ])
+
+      const mergedAdmissions = new Map<string, Admission>()
+      if (verifiedResult.status === 'fulfilled') {
+        verifiedResult.value.data.forEach((admission) => mergedAdmissions.set(String(admission.id), admission))
+      }
+      if (pendingResult.status === 'fulfilled') {
+        pendingResult.value.data.forEach((admission) => mergedAdmissions.set(String(admission.id), admission))
+      }
 
       const { watchlistIndex } = get()
-      return response.data.map((admission) =>
+      return Array.from(mergedAdmissions.values()).map((admission) =>
         toStudentAdmission(admission, watchlistIndex[admission.id])
       )
     } catch (err: any) {

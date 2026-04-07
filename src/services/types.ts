@@ -91,7 +91,17 @@ export interface Admission {
     importantDates?: Record<string, string>;
     feeStructure?: Record<string, any>;
     officialLinks?: string[];
+    websiteUrl?: string;
+    admissionPortalLink?: string;
+    links?: {
+      officialLinks?: string[];
+      websiteUrl?: string;
+      admissionPortalLink?: string;
+      officialWebsite?: string;
+      portalUrl?: string;
+    };
   } | null;
+  eligibility?: string | null;
   verification_status: 'draft' | 'pending' | 'verified' | 'rejected';
   verified_at?: string | null;
   verified_by?: string | null;

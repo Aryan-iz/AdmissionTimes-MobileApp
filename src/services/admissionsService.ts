@@ -31,6 +31,7 @@ export const admissionsService = {
     field_of_study?: string;
     location?: string;
     program_type?: string;
+    verification_status?: string;
     page?: number;
     limit?: number;
   }): Promise<PaginatedResponse<Admission>> => {

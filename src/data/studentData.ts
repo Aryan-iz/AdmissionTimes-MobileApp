@@ -25,7 +25,10 @@ export interface StudentAdmission {
   matchNumeric?: number
   logoBg: string
   aiSummary?: string
+  eligibility?: string
   officialUrl?: string
+  universityWebsiteUrl?: string
+  admissionPortalLink?: string
   alertEnabled?: boolean
   saved?: boolean
   isNew?: boolean // For new admission slider
