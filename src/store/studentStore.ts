@@ -10,6 +10,7 @@
 import { create } from 'zustand'
 import type { StudentAdmission, StudentNotification, AdmissionStatus } from '../data/studentData'
 import type { NotificationType } from '../data/studentData'
+import { calculateDaysRemaining, formatDeadlineDisplay, isAdmissionActiveByPolicy } from '../data/studentData'
 import { admissionsService } from '../services/admissionsService'
 import { dashboardService } from '../services/dashboardService'
 import { notificationsService } from '../services/notificationsService'
@@ -206,8 +207,7 @@ const toStudentNotification = (notification: Notification): StudentNotification 
 
 const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntry): StudentAdmission => {
   const deadlineStr = admission.deadline || ''
-  const deadlineDate = deadlineStr ? new Date(deadlineStr) : new Date()
-  const daysRemaining = Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  const daysRemaining = calculateDaysRemaining(deadlineStr)
 
   let programStatus: 'Open' | 'Closing Soon' | 'Closed' = 'Open'
   if (daysRemaining < 0) programStatus = 'Closed'
@@ -292,8 +292,8 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
     degree,
     degreeType,
     startDate: admission.start_date || admission.created_at || '',
-    deadline: deadlineStr || new Date().toISOString(),
-    deadlineDisplay: deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    deadline: deadlineStr,
+    deadlineDisplay: formatDeadlineDisplay(deadlineStr),
     daysRemaining,
     fee: admission.application_fee ? `${admission.application_fee}` : '0',
     feeNumeric: admission.application_fee || 0,
@@ -330,7 +330,7 @@ const applyWatchlistState = (
 }
 
 const deriveStats = (admissions: StudentAdmission[], notifications: StudentNotification[]): StudentStats => {
-  const active = admissions.filter(a => a.programStatus === 'Open' || a.programStatus === 'Closing Soon').length
+  const active = admissions.filter(isAdmissionActiveByPolicy).length
   const saved = admissions.filter(a => a.saved).length
   const upcoming = admissions.filter(a => a.daysRemaining >= 0 && a.daysRemaining <= 7).length
   const recommendations = admissions.filter(a => (a.matchNumeric || 0) >= RECOMMENDATION_MIN_SCORE).length

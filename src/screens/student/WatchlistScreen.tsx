@@ -6,7 +6,7 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
-import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
+import { getStatusColor } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { Feather } from '@expo/vector-icons'
 
@@ -58,7 +58,7 @@ export default function WatchlistScreen() {
   }, [searchQuery, cityFilter, savedAdmissions.length])
 
   const upcomingCount = useMemo(() => {
-    return savedAdmissions.filter(a => calculateDaysRemaining(a.deadline) <= 30).length
+    return savedAdmissions.filter(a => a.daysRemaining >= 0 && a.daysRemaining <= 30).length
   }, [savedAdmissions])
 
   const toggleSelection = (id: string) => {
@@ -192,7 +192,7 @@ export default function WatchlistScreen() {
           filteredAdmissions.map((admission) => {
             const statusColors = getStatusColor(admission.status)
             const isSelected = selectedIds.includes(admission.id)
-            const daysLeft = calculateDaysRemaining(admission.deadline)
+            const daysLeft = admission.daysRemaining
 
             return (
               <View key={admission.id} style={styles.programCard}>
