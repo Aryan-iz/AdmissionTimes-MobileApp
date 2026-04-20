@@ -6,7 +6,7 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
-import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
+import { getStatusColor } from '../../data/studentData'
 import { PremiumHeader } from '../../components/ui'
 import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
@@ -51,10 +51,7 @@ export default function DeadlineScreen() {
   }, [admissions])
 
   const filteredDeadlines = useMemo(() => {
-    let filtered = admissions.map(a => ({
-      ...a,
-      daysRemaining: calculateDaysRemaining(a.deadline),
-    }))
+    let filtered = [...admissions]
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -98,7 +95,7 @@ export default function DeadlineScreen() {
       })
 
       return Object.entries(groupedByDateMap).sort(
-        (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()
+        (a, b) => (a[1][0]?.daysRemaining ?? Number.MAX_SAFE_INTEGER) - (b[1][0]?.daysRemaining ?? Number.MAX_SAFE_INTEGER)
       )
     }
 
@@ -282,12 +279,7 @@ export default function DeadlineScreen() {
                 {grouped.openGroups.map(([date, deadlines]) => (
                   <View key={`open-${date}`} style={styles.dateGroup}>
                     <Text style={styles.dateHeader}>
-                      {new Date(date).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })}
+                      {deadlines[0]?.deadlineDisplay || date}
                     </Text>
 
                     {deadlines.map((deadline) => {
@@ -366,12 +358,7 @@ export default function DeadlineScreen() {
                 {grouped.closedGroups.map(([date, deadlines]) => (
                   <View key={`closed-${date}`} style={styles.dateGroup}>
                     <Text style={styles.dateHeaderMuted}>
-                      {new Date(date).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })}
+                      {deadlines[0]?.deadlineDisplay || date}
                     </Text>
 
                     {deadlines.map((deadline) => {

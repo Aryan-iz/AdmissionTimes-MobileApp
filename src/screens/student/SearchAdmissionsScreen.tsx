@@ -6,7 +6,7 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
-import { getStatusColor, calculateDaysRemaining } from '../../data/studentData'
+import { getStatusColor } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
@@ -372,7 +372,7 @@ export default function SearchAdmissionsScreen() {
               const statusColors = getStatusColor(admission.status)
               const isSaved = savedIds.includes(admission.id)
               const isComparing = compareIds.includes(admission.id)
-              const daysLeft = calculateDaysRemaining(admission.deadline)
+              const daysLeft = admission.daysRemaining
 
               return (
                 <View key={admission.id} style={styles.gridCard}>
@@ -433,7 +433,7 @@ export default function SearchAdmissionsScreen() {
               const statusColors = getStatusColor(admission.status)
               const isSaved = savedIds.includes(admission.id)
               const isComparing = compareIds.includes(admission.id)
-              const daysLeft = calculateDaysRemaining(admission.deadline)
+              const daysLeft = admission.daysRemaining
 
               return (
                 <Pressable

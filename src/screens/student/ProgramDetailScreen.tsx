@@ -4,7 +4,7 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
 import { useStudentStore } from '../../store'
-import { calculateDaysRemaining } from '../../data/studentData'
+import { formatDateTimeDisplay } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 import { ReminderModal } from '../../components/student'
 import { trackCappedStudentActivitySafe } from '../../services'
@@ -93,7 +93,8 @@ export default function ProgramDetailScreen() {
   }
 
   const statusColors = getStatusColor(program.programStatus)
-  const daysRemaining = calculateDaysRemaining(program.deadline)
+  const daysRemaining = program.daysRemaining
+  const lastUpdatedDisplay = formatDateTimeDisplay(program.updated)
   const applyUrl = program.admissionPortalLink || program.officialUrl
   const websiteUrl = program.universityWebsiteUrl
   const portalUrl = program.admissionPortalLink
@@ -209,7 +210,7 @@ export default function ProgramDetailScreen() {
               </View>
             </Pressable>
 
-            <Text style={styles.lastUpdated}>Last Updated: {program.updated}</Text>
+            <Text style={styles.lastUpdated}>Last Updated: {lastUpdatedDisplay}</Text>
           </View>
 
           {/* Tabs */}
@@ -301,7 +302,7 @@ export default function ProgramDetailScreen() {
 
                 <View style={styles.dateRow}>
                   <Text style={styles.dateLabel}>Last Updated</Text>
-                  <Text style={styles.dateValue}>{program.updated}</Text>
+                  <Text style={styles.dateValue}>{lastUpdatedDisplay}</Text>
                 </View>
               </View>
             )}

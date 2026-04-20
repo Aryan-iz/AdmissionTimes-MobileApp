@@ -115,9 +115,9 @@ export default function CompareScreen() {
     
     const lowestFee = selectedAdmissions.reduce((min: StudentAdmission, a: StudentAdmission) => a.feeNumeric < min.feeNumeric ? a : min, selectedAdmissions[0])
     const earliestDeadline = selectedAdmissions.reduce((earliest: StudentAdmission, a: StudentAdmission) => {
-      const dateA = new Date(a.deadline).getTime()
-      const dateB = new Date(earliest.deadline).getTime()
-      return dateA < dateB ? a : earliest
+      const daysA = a.daysRemaining
+      const daysB = earliest.daysRemaining
+      return daysA < daysB ? a : earliest
     }, selectedAdmissions[0])
     const highestMatch = selectedAdmissions.reduce((max: StudentAdmission, a: StudentAdmission) => (a.matchNumeric || 0) > (max.matchNumeric || 0) ? a : max, selectedAdmissions[0])
     

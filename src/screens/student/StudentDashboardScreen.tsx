@@ -6,7 +6,7 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator.tsx'
 import { useAuthStore, useStudentStore } from '../../store'
-import { calculateDaysRemaining, getStatusColor, isAdmissionActive, type StudentAdmission } from '../../data/studentData'
+import { getStatusColor, isAdmissionActiveByPolicy, type StudentAdmission } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { AiAssistantButton, ChatModal } from '../../components/ai'
 import { NewAdmissionSlider } from '../../components/student'
@@ -47,16 +47,16 @@ export default function StudentDashboardScreen() {
   }, [setContext])
 
   const stats = useMemo(() => {
-    // Active admissions: current date is between start and end date
-    const activeAdmissions = admissions.filter(isAdmissionActive)
+    // Active admissions policy: verified/pending and still open
+    const activeAdmissions = admissions.filter(isAdmissionActiveByPolicy)
     
     const upcoming = activeAdmissions.filter((a) => {
-      const daysRemaining = calculateDaysRemaining(a.deadline)
+      const daysRemaining = a.daysRemaining
       return daysRemaining >= 0 && daysRemaining <= 7
     }).length
 
     const urgent = activeAdmissions.filter((a) => {
-      const daysRemaining = calculateDaysRemaining(a.deadline)
+      const daysRemaining = a.daysRemaining
       return daysRemaining >= 0 && daysRemaining <= 7
     }).length
 
@@ -73,11 +73,11 @@ export default function StudentDashboardScreen() {
   const upcomingDeadlines = useMemo(() => {
     return admissions
       .filter((a) => {
-        const daysRemaining = calculateDaysRemaining(a.deadline)
+        const daysRemaining = a.daysRemaining
         // Only show deadlines for active admissions that are upcoming (not past)
         return a.programStatus !== 'Closed' && daysRemaining >= 0 && daysRemaining <= 30
       })
-      .map((a) => ({ ...a, daysRemaining: calculateDaysRemaining(a.deadline) }))
+      .map((a) => ({ ...a }))
       .sort((a, b) => a.daysRemaining - b.daysRemaining)
       .slice(0, 3)
   }, [admissions])
@@ -270,7 +270,7 @@ export default function StudentDashboardScreen() {
                       days <= 0 ? 'Today'
                       : days === 1 ? 'Tomorrow'
                       : `${days}d left`
-                    const shortDate = new Date(admission.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    const shortDate = admission.deadlineDisplay
                     return (
                       <View key={admission.id} style={styles.deadlineItem}>
                         <View style={[styles.deadlineDot, { backgroundColor: color }]} />
