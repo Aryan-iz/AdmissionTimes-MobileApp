@@ -72,18 +72,38 @@ export interface User {
 export interface Admission {
   id: string;
   title: string;
+  source_admission_id?: string | null;
+  parent_admission_id?: string | null;
   description?: string | null;
   field_of_study?: string | null;
   location?: string | null;
+  city?: string | null;
+  campus?: string | null;
+  source_location?: string | null;
   delivery_mode?: 'On-campus' | 'Online' | 'Hybrid' | null;
   degree_level?: string | null;
+  degree_label?: string | null;
+  degree_type?: string | null;
   program_type?: string | null;
   duration?: string | null;
   tuition_fee?: number | null;
   application_fee?: number | null;
+  fee_amount?: number | null;
+  fee_display?: string | null;
   currency?: string | null;
   deadline?: string | null;
+  deadline_iso?: string | null;
   start_date?: string | null;
+  days_remaining?: number;
+  program_status?: 'Open' | 'Closing Soon' | 'Closed' | null;
+  contract_version?: number;
+  source_url?: string | null;
+  source_details_link?: string | null;
+  primary_apply_url?: string | null;
+  university_website_url?: string | null;
+  admission_portal_url?: string | null;
+  source_system?: string | null;
+  data_origin?: string | null;
   requirements?: {
     eligibility?: string;
     documents?: string[];
@@ -99,7 +119,18 @@ export interface Admission {
       admissionPortalLink?: string;
       officialWebsite?: string;
       portalUrl?: string;
+      source_details_link?: string;
+      location?: string;
     };
+    source_details_link?: string;
+    source_location?: string;
+    location?: string;
+    campus?: string;
+    city?: string;
+    fee?: string;
+    fee_display?: string;
+    application_fee?: string;
+    programs_offered_count?: number;
   } | null;
   eligibility?: string | null;
   verification_status: 'draft' | 'pending' | 'verified' | 'rejected';
@@ -118,7 +149,6 @@ export interface Admission {
   alert_enabled?: boolean; // Indicates if user has enabled alerts for this admission
   match_score?: number; // Recommendation match score
   match_reason?: string; // Reason for recommendation
-  days_remaining?: number; // Days until deadline
 }
 
 /**

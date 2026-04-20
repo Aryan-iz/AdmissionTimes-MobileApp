@@ -119,7 +119,13 @@ export default function SearchAdmissionsScreen() {
       filtered = filtered.filter(a => selectedStatus.includes(a.status))
     }
 
-    return filtered
+    const isDeadlinePassed = (item: (typeof filtered)[number]) =>
+      item.daysRemaining < 0 || item.programStatus === 'Closed'
+
+    const activeAdmissions = filtered.filter((item) => !isDeadlinePassed(item))
+    const passedAdmissions = filtered.filter((item) => isDeadlinePassed(item))
+
+    return [...activeAdmissions, ...passedAdmissions]
   }, [searchResults, searchQuery, universityFilter, cityFilter, selectedStatus])
 
   useEffect(() => {

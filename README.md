@@ -213,3 +213,11 @@ eas build --platform android --profile development
 eas build --platform android --profile preview
 eas build --platform android --profile production
 ```
+
+## Latest Updates (April 2026)
+
+- Added scraper-aware admission adapter and student store normalization fallbacks.
+- Improved program detail source and link handling for admission records.
+- Ensured deadline-passed admissions render below active admissions in search.
+- Added unit tests for scraper admission adapter behavior.
+

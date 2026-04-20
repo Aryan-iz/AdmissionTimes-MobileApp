@@ -11,7 +11,8 @@
     "android": "cross-env EXPO_NO_DEPENDENCY_VALIDATION=1 expo start --android",
     "ios": "cross-env EXPO_NO_DEPENDENCY_VALIDATION=1 expo start --ios",
     "web": "cross-env EXPO_NO_DEPENDENCY_VALIDATION=1 expo start --web",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@babel/runtime": "^7.25.0",
@@ -48,6 +49,7 @@
     "@types/react": "~19.1.17",
     "babel-preset-expo": "~12.0.3",
     "cross-env": "^10.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.4"
   }
 }

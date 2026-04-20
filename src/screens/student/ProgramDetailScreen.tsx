@@ -31,6 +31,7 @@ export default function ProgramDetailScreen() {
   }, [])
 
   const program = route.params?.id ? getAdmissionById(route.params.id) : undefined
+  const isScraperProgram = String(program?.dataOrigin || '').toLowerCase() === 'scraper'
 
   useEffect(() => {
     if (!program?.id) return
@@ -95,9 +96,15 @@ export default function ProgramDetailScreen() {
   const statusColors = getStatusColor(program.programStatus)
   const daysRemaining = program.daysRemaining
   const lastUpdatedDisplay = formatDateTimeDisplay(program.updated)
-  const applyUrl = program.admissionPortalLink || program.officialUrl
-  const websiteUrl = program.universityWebsiteUrl
-  const portalUrl = program.admissionPortalLink
+  const displayDegree = program.degree || (isScraperProgram ? 'BS' : 'Unknown')
+  const displayLocation = program.location || (isScraperProgram ? 'Location not specified' : 'Unknown Location')
+  const sourceLabel = isScraperProgram ? 'Public listing' : 'University source'
+  const sourceHint = isScraperProgram
+    ? 'Shown from a public admissions listing, not an official university submission.'
+    : 'Shown from the university record.'
+  const applyUrl = program.admissionPortalLink || program.officialUrl || program.universityWebsiteUrl
+  const websiteUrl = program.universityWebsiteUrl || program.officialUrl
+  const portalUrl = program.admissionPortalLink || program.officialUrl
 
   const handleApplyNow = async () => {
     if (!applyUrl) {
@@ -238,7 +245,7 @@ export default function ProgramDetailScreen() {
                 <View style={styles.overviewSection}>
                   <Text style={styles.subsectionTitle}>Program Information</Text>
                   <Text style={styles.descriptionText}>
-                    {program.program} at {program.university} is a {program.degree} program located in {program.location}.
+                    {program.program} at {program.university} is a {displayDegree} program located in {displayLocation}.
                     {program.aiSummary && (
                       <Text>{'\n\n'}{program.aiSummary}</Text>
                     )}
@@ -248,15 +255,20 @@ export default function ProgramDetailScreen() {
                 <View style={styles.infoGrid}>
                   <View style={styles.infoCard}>
                     <Text style={styles.infoLabel}>Degree Type</Text>
-                    <Text style={styles.infoValue}>{program.degree}</Text>
+                    <Text style={styles.infoValue}>{displayDegree}</Text>
                   </View>
                   <View style={styles.infoCard}>
                     <Text style={styles.infoLabel}>Location</Text>
-                    <Text style={styles.infoValue}>{program.location}</Text>
+                    <Text style={styles.infoValue}>{displayLocation}</Text>
                   </View>
                   <View style={styles.infoCard}>
                     <Text style={styles.infoLabel}>Deadline</Text>
                     <Text style={styles.infoValue}>{program.deadlineDisplay}</Text>
+                  </View>
+                  <View style={styles.infoCard}>
+                    <Text style={styles.infoLabel}>Source</Text>
+                    <Text style={styles.infoValue}>{sourceLabel}</Text>
+                    <Text style={styles.sourceHint}>{sourceHint}</Text>
                   </View>
                 </View>
               </View>
@@ -268,7 +280,13 @@ export default function ProgramDetailScreen() {
 
                 <View style={styles.overviewSection}>
                   <Text style={styles.subsectionTitle}>Degree Type</Text>
-                  <Text style={styles.descriptionText}>{program.degree}</Text>
+                  <Text style={styles.descriptionText}>{displayDegree}</Text>
+                </View>
+
+                <View style={styles.overviewSection}>
+                  <Text style={styles.subsectionTitle}>Source</Text>
+                  <Text style={styles.descriptionText}>{sourceLabel}</Text>
+                  <Text style={styles.sourceHint}>{sourceHint}</Text>
                 </View>
 
                 <View style={styles.overviewSection}>
@@ -542,6 +560,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#111827',
+  },
+  sourceHint: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#6B7280',
   },
   eligibilityCard: {
     backgroundColor: '#F9FAFB',

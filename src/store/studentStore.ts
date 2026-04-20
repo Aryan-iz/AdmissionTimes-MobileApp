@@ -17,6 +17,14 @@ import { notificationsService } from '../services/notificationsService'
 import { watchlistsService } from '../services/watchlistsService'
 import { recommendationsService } from '../services/recommendationsService'
 import type { Admission, Notification, Watchlist } from '../services/types'
+import {
+  extractScraperFee,
+  extractScraperOfficialUrl,
+  inferScraperDegreeLabelFromTitle,
+  isScraperAdmission,
+  resolveScraperAdmissionLocation,
+  shouldHideGenericScraperAnnouncement,
+} from '../utils/scraperAdmissionAdapter'
 
 const RECOMMENDATION_MIN_SCORE = 50
 
@@ -206,17 +214,26 @@ const toStudentNotification = (notification: Notification): StudentNotification 
 }
 
 const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntry): StudentAdmission => {
-  const deadlineStr = admission.deadline || ''
+  const isScraper = isScraperAdmission(admission)
+  const deadlineStr = admission.deadline_iso || admission.deadline || ''
   const daysRemaining = calculateDaysRemaining(deadlineStr)
 
   let programStatus: 'Open' | 'Closing Soon' | 'Closed' = 'Open'
   if (daysRemaining < 0) programStatus = 'Closed'
   else if (daysRemaining <= 7) programStatus = 'Closing Soon'
 
-  const degreeKey = (admission.degree_level || 'BS').trim()
+  const inferredScraperDegree = isScraper ? inferScraperDegreeLabelFromTitle(admission.title) : null
+  const resolvedDegreeLabel =
+    admission.degree_label ||
+    admission.degree_level ||
+    inferredScraperDegree ||
+    (isScraper ? 'BS' : 'Unknown')
+
+  const degreeKey = resolvedDegreeLabel.trim()
   const degreeType = degreeTypeMap[degreeKey] || 'BS'
-  const degree = admission.degree_level || 'Unknown'
-  const location = admission.location || 'Unknown Location'
+  const degree = resolvedDegreeLabel || 'Unknown'
+  const scraperResolvedLocation = isScraper ? resolveScraperAdmissionLocation(admission) : null
+  const location = scraperResolvedLocation || admission.location || 'Location not specified'
   const city = location.split(',')[0]?.trim() || 'Unknown'
   const requirements =
     admission.requirements && typeof admission.requirements === 'object' && !Array.isArray(admission.requirements)
@@ -248,7 +265,20 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
     readString(requirementLinks.website_url) ||
     readString(requirementLinks.officialWebsite)
 
-  const officialUrl = admissionPortalLink || universityWebsiteUrl || officialLinks[0] || undefined
+  const scraperOfficialUrl = isScraper ? extractScraperOfficialUrl(admission) : undefined
+  const officialUrl = scraperOfficialUrl || admissionPortalLink || universityWebsiteUrl || officialLinks[0] || undefined
+
+  const scraperFee = isScraper ? extractScraperFee(admission) : { feeNumeric: null as number | null, feeDisplay: undefined as string | undefined }
+  const feeNumeric = Number.isFinite(Number(admission.fee_amount))
+    ? Number(admission.fee_amount)
+    : Number.isFinite(Number(admission.application_fee))
+      ? Number(admission.application_fee)
+      : (typeof scraperFee.feeNumeric === 'number' ? scraperFee.feeNumeric : 0)
+
+  const feeDisplay =
+    (typeof admission.fee_display === 'string' && admission.fee_display.trim().length > 0 ? admission.fee_display.trim() : undefined) ||
+    (typeof scraperFee.feeDisplay === 'string' ? scraperFee.feeDisplay : undefined) ||
+    (feeNumeric > 0 ? `PKR ${feeNumeric.toLocaleString()}` : 'Not specified')
 
   const eligibilityRecord =
     requirements.eligibility && typeof requirements.eligibility === 'object' && !Array.isArray(requirements.eligibility)
@@ -287,6 +317,8 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
 
   return {
     id: admission.id.toString(),
+    sourceAdmissionId: admission.source_admission_id || admission.parent_admission_id || undefined,
+    dataOrigin: isScraper ? 'scraper' : (admission.data_origin || undefined),
     university: admission.university_name || `University ${admission.university_id || 'Unknown'}`,
     program: admission.title,
     degree,
@@ -295,8 +327,8 @@ const toStudentAdmission = (admission: Admission, watchlistEntry?: WatchlistEntr
     deadline: deadlineStr,
     deadlineDisplay: formatDeadlineDisplay(deadlineStr),
     daysRemaining,
-    fee: admission.application_fee ? `${admission.application_fee}` : '0',
-    feeNumeric: admission.application_fee || 0,
+    fee: feeDisplay,
+    feeNumeric,
     location,
     city,
     status,
@@ -474,6 +506,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         })
 
         const admissionSource = Array.from(admissionsMap.values())
+          .filter((admission) => !shouldHideGenericScraperAnnouncement(admission))
         const allAdmissions = admissionSource.map((admission) =>
           toStudentAdmission(admission, watchlistIndex[admission.id])
         )
@@ -559,7 +592,7 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
         )
       } else {
         console.log('🔖 [studentStore] Adding to watchlist:', id)
-        const response = await watchlistsService.add(id, false) // alert_opt_in = false
+        const response = await watchlistsService.add(id, true) // default alerts on for new saves
         console.log('✅ [studentStore] Added to watchlist:', id, 'Watchlist ID:', response.data?.id)
         if (response.data) {
           updatedWatchlistIndex = {
@@ -825,7 +858,10 @@ export const useStudentStore = create<StudentStore>((set, get) => ({
       }
 
       const { watchlistIndex } = get()
-      return Array.from(mergedAdmissions.values()).map((admission) =>
+      const normalizedAdmissions = Array.from(mergedAdmissions.values())
+        .filter((admission) => !shouldHideGenericScraperAnnouncement(admission))
+
+      return normalizedAdmissions.map((admission) =>
         toStudentAdmission(admission, watchlistIndex[admission.id])
       )
     } catch (err: any) {
