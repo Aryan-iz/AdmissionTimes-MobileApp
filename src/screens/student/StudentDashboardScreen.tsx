@@ -20,6 +20,7 @@ export default function StudentDashboardScreen() {
   const admissions = useStudentStore(state => state.admissions)
   const savedAdmissionsIds = useStudentStore(state => state.savedAdmissions)
   const notifications = useStudentStore(state => state.notifications)
+  const dashboardStats = useStudentStore(state => state.stats)
   const loading = useStudentStore(state => state.loading)
   const fetchDashboardData = useStudentStore(state => state.fetchDashboardData)
   const user = useAuthStore(state => state.user)
@@ -47,28 +48,24 @@ export default function StudentDashboardScreen() {
   }, [setContext])
 
   const stats = useMemo(() => {
-    // Active admissions policy: verified/pending and still open
-    const activeAdmissions = admissions.filter(isAdmissionActiveByPolicy)
-    
-    const upcoming = activeAdmissions.filter((a) => {
-      const daysRemaining = a.daysRemaining
-      return daysRemaining >= 0 && daysRemaining <= 7
-    }).length
-
-    const urgent = activeAdmissions.filter((a) => {
-      const daysRemaining = a.daysRemaining
-      return daysRemaining >= 0 && daysRemaining <= 7
-    }).length
-
-    const computed = {
-      active: activeAdmissions.length,
-      saved: savedAdmissions.length,
-      upcoming,
-      urgent,
+    if (dashboardStats) {
+      console.log('✅ [StudentDashboard] Using backend stats:', dashboardStats)
+      return {
+        active: dashboardStats.active_admissions,
+        saved: dashboardStats.saved_count,
+        upcoming: dashboardStats.upcoming_deadlines,
+        urgent: dashboardStats.urgent_deadlines,
+      }
     }
 
-    return computed
-  }, [admissions, savedAdmissions])
+    console.warn('⚠️ [StudentDashboard] No backend stats available, showing zeros')
+    return {
+      active: 0,
+      saved: 0,
+      upcoming: 0,
+      urgent: 0,
+    }
+  }, [dashboardStats])
 
   const upcomingDeadlines = useMemo(() => {
     return admissions
@@ -97,9 +94,9 @@ export default function StudentDashboardScreen() {
       activities.push({ action: n.title, time: n.timeAgo })
     })
 
-    if (savedAdmissions.length > 0) {
+    if (stats.saved > 0) {
       activities.push({
-        action: `${savedAdmissions.length} program${savedAdmissions.length > 1 ? 's' : ''} saved to watchlist`,
+        action: `${stats.saved} program${stats.saved > 1 ? 's' : ''} saved to watchlist`,
         time: 'Recently',
       })
     }
@@ -113,7 +110,7 @@ export default function StudentDashboardScreen() {
     }
 
     return activities.slice(0, 3)
-  }, [notifications, savedAdmissions, admissions])
+  }, [notifications, savedAdmissions, admissions, stats.saved])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
@@ -172,7 +169,7 @@ export default function StudentDashboardScreen() {
             <View style={[styles.statsIcon, { backgroundColor: '#E0E7FF' }]}>
               <Feather name="book-open" size={18} color="#2563EB" />
             </View>
-            <Text style={styles.statsLabel}>Active Admissions</Text>
+            <Text style={styles.statsLabel}> Active Applications</Text>
             <Text style={styles.statsValue}>{stats.active}</Text>
             <Text style={styles.statsSubtext}>Open & Closing Soon</Text>
           </Pressable>
@@ -185,7 +182,7 @@ export default function StudentDashboardScreen() {
               <Feather name="star" size={18} color="#2563EB" />
             </View>
             <Text style={styles.statsLabel}>Recommendations</Text>
-            <Text style={styles.statsValue}>{recommendedAdmissions.length}</Text>
+            <Text style={styles.statsValue}>{dashboardStats?.recommendations_count ?? recommendedAdmissions.length}</Text>
             <Text style={styles.statsSubtext}>Matched programs</Text>
           </Pressable>
 

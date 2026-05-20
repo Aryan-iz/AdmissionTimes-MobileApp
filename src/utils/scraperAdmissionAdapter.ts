@@ -2,6 +2,29 @@ import type { Admission } from '../services/types'
 
 type AnyRecord = Record<string, unknown>
 
+const PROGRAM_COLLECTION_KEYS = [
+  'programs',
+  'sub_programs',
+  'subPrograms',
+  'program_list',
+  'programList',
+  'program_details',
+  'programDetails',
+  'variants',
+  'tracks',
+]
+
+const PROGRAM_REQUIREMENT_COLLECTION_KEYS = [
+  'programs_offered',
+  'programs',
+  'program_list',
+  'programList',
+  'sub_programs',
+  'subPrograms',
+  'tracks',
+  'majors',
+]
+
 const readString = (value: unknown): string | undefined => {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
@@ -11,6 +34,51 @@ const toObject = (value: unknown): AnyRecord => {
     return value as AnyRecord
   }
   return {}
+}
+
+const readProgramName = (entry: AnyRecord): string | null => {
+  const candidate =
+    entry.program_name ||
+    entry.program_title ||
+    entry.sub_program_title ||
+    entry.title ||
+    entry.name ||
+    entry.label
+
+  return typeof candidate === 'string' && candidate.trim().length > 0
+    ? candidate.trim()
+    : null
+}
+
+const getProgramCollection = (admission: AnyRecord): unknown[] => {
+  for (const key of PROGRAM_COLLECTION_KEYS) {
+    const value = admission?.[key]
+    if (Array.isArray(value) && value.length > 0) {
+      return value
+    }
+  }
+
+  const requirements = toObject(admission?.requirements)
+  for (const key of PROGRAM_REQUIREMENT_COLLECTION_KEYS) {
+    const value = requirements?.[key]
+    if (Array.isArray(value) && value.length > 0) {
+      return value
+    }
+  }
+
+  const offeredPrograms = requirements?.programs_offered
+  if (typeof offeredPrograms === 'string' && offeredPrograms.trim().length > 0) {
+    const programNames = offeredPrograms
+      .split(',')
+      .map((item: string) => item.trim())
+      .filter((item: string) => item.length > 0)
+
+    if (programNames.length > 0) {
+      return programNames
+    }
+  }
+
+  return []
 }
 
 const normalizeString = (value: unknown): string => {
@@ -93,6 +161,61 @@ export const shouldHideGenericScraperAnnouncement = (admission: Admission): bool
   if (programsOfferedCount <= 1) return false
 
   return /(admission|admissions|programs?|undergraduate|graduate|postgraduate|round|round\s*\d+)/i.test(title)
+}
+
+export const flattenProgramAdmissions = <T extends Record<string, any>>(admissions: T[]): T[] => {
+  return admissions.flatMap((admission) => {
+    const programCollection = getProgramCollection(admission)
+    if (programCollection.length === 0) {
+      return [admission]
+    }
+
+    const parentId = String(admission.id || admission.admission_id || '')
+
+    return programCollection.map((entry, index) => {
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+        const normalizedEntry = { ...entry } as AnyRecord
+        const normalizedProgramName = readProgramName(normalizedEntry)
+        const childId = String(
+          normalizedEntry.id ||
+          normalizedEntry.admission_id ||
+          normalizedEntry.program_id ||
+          `${parentId || 'program'}::program::${index + 1}`,
+        )
+
+        return {
+          ...admission,
+          ...normalizedEntry,
+          id: childId,
+          source_admission_id: parentId || normalizedEntry.source_admission_id || normalizedEntry.parent_admission_id || null,
+          parent_admission_id: parentId || normalizedEntry.parent_admission_id || null,
+          program_index: index,
+          title: normalizedProgramName || admission.title,
+          program_title: normalizedProgramName || admission.program_type || admission.title,
+        }
+      }
+
+      if (typeof entry === 'string') {
+        return {
+          ...admission,
+          id: `${parentId || 'program'}::program::${index + 1}`,
+          source_admission_id: parentId || null,
+          parent_admission_id: parentId || null,
+          program_index: index,
+          title: entry,
+          program_title: entry,
+        }
+      }
+
+      return {
+        ...admission,
+        id: `${parentId || 'program'}::program::${index + 1}`,
+        source_admission_id: parentId || null,
+        parent_admission_id: parentId || null,
+        program_index: index,
+      }
+    })
+  })
 }
 
 export const inferScraperDegreeLabelFromTitle = (title: string | null | undefined): string | null => {

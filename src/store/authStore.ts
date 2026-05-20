@@ -15,6 +15,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authService, supabase, signOutUser, onAuthStateChange } from '../services'
+import { useStudentStore } from './studentStore'
 import type { User } from '../services/types'
 
 // Re-export types
@@ -322,6 +323,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       // Clear storage
       await AsyncStorage.removeItem(STORAGE_KEY)
 
+      useStudentStore.getState().reset()
+
       set({ user: null, isAuthenticated: false, error: null })
 
       console.log('✅ [authStore] User signed out successfully')
@@ -383,6 +386,7 @@ authStoreGlobal.__admissionTimesAuthStateUnsubscribe = onAuthStateChange((event)
 
   if (event === 'SIGNED_OUT') {
     useAuthStore.getState().setUser(null)
+    useStudentStore.getState().reset()
   } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
     if (shouldSkipThrottledCheck) {
       return

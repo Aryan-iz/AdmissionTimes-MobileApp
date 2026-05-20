@@ -26,7 +26,20 @@ export default function WatchlistScreen() {
   const [isLoadingResults, setIsLoadingResults] = useState(false)
 
   const savedAdmissions = useMemo(() => {
-    return admissions.filter(a => savedIds.includes(a.id))
+    const grouped = new Map<string, typeof admissions[number]>()
+
+    admissions.forEach((admission) => {
+      if (!savedIds.includes(admission.id)) {
+        return
+      }
+
+      const groupKey = admission.sourceAdmissionId || admission.id.split('::program::')[0] || admission.id
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, admission)
+      }
+    })
+
+    return Array.from(grouped.values())
   }, [admissions, savedIds])
 
   const cities = useMemo(() => {
