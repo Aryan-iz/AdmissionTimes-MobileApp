@@ -21,6 +21,8 @@ interface AiContextType {
   toggleChat: () => void
   context: string
   setContext: (context: string) => void
+  activeRouteName?: string
+  setActiveRouteName: (routeName?: string) => void
 }
 
 const AiContext = createContext<AiContextType | undefined>(undefined)
@@ -28,12 +30,28 @@ const AiContext = createContext<AiContextType | undefined>(undefined)
 export function AiProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [context, setContext] = useState('Student Dashboard')
+  const [activeRouteName, setActiveRouteName] = useState<string | undefined>('StudentDashboard')
 
   const openChat = () => setIsOpen(true)
   const closeChat = () => setIsOpen(false)
   const toggleChat = () => setIsOpen((prev) => !prev)
 
-  return <AiContext.Provider value={{ isOpen, openChat, closeChat, toggleChat, context, setContext }}>{children}</AiContext.Provider>
+  return (
+    <AiContext.Provider
+      value={{
+        isOpen,
+        openChat,
+        closeChat,
+        toggleChat,
+        context,
+        setContext,
+        activeRouteName,
+        setActiveRouteName,
+      }}
+    >
+      {children}
+    </AiContext.Provider>
+  )
 }
 
 export function useAi() {

@@ -1,9 +1,21 @@
 import { Modal, View, Text, TextInput, ScrollView, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import type { AxiosError } from 'axios'
 import { useAi } from '../../contexts/AiContext'
-import aiService, { type ChatHistoryEntry } from '../../services/aiService'
+import { useAuthStore } from '../../store'
+import aiService, { type AiChatResponse } from '../../services/aiService'
+import {
+  appendResultsToAnswer,
+  buildGuidanceResponse,
+  buildHistoryFromModalMessages,
+  formatAiChatAnswer,
+  getAiErrorMessage,
+  getQuickActionsForContext,
+  isRefusalReply,
+  isTransientStatus,
+} from '../../utils/aiChatUtils'
 
-type AiAvailability = 'checking' | 'online' | 'fallback'
+type AiAvailability = 'checking' | 'online' | 'offline'
 
 interface Message {
   id: string
@@ -12,15 +24,9 @@ interface Message {
   timestamp: Date
 }
 
-const quickActions = [
-  'Find CS programs in Karachi',
-  'Show deadlines this week',
-  'Compare my saved programs',
-  'What does Verified status mean?',
-]
-
 export default function ChatModal() {
   const { isOpen, closeChat, context } = useAi()
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -34,93 +40,25 @@ export default function ChatModal() {
   const [availability, setAvailability] = useState<AiAvailability>('checking')
   const scrollViewRef = useRef<ScrollView>(null)
 
+  const quickActions = useMemo(() => getQuickActionsForContext(context), [context])
+
   const subtitleStatus =
-    availability === 'online'
-      ? 'Online'
-      : availability === 'checking'
-      ? 'Checking'
-      : 'Guided mode'
+    availability === 'online' ? 'Online' : availability === 'checking' ? 'Checking' : 'Offline'
 
-  const buildFallbackResponse = (query: string): string => {
-    const lower = query.toLowerCase()
-    const suggestions: string[] = []
-
-    if (lower.includes('deadline') || lower.includes('reminder')) {
-      suggestions.push('Open Deadlines to review due dates and urgent submissions.')
-      suggestions.push('Enable alerts from your watchlist for upcoming program deadlines.')
+  const resolveAssistantReply = (query: string, answer: string | undefined, data?: { results?: unknown[]; result_count?: number }): string => {
+    if (!answer) {
+      if (data && (data.result_count ?? 0) > 0) {
+        return formatAiChatAnswer({
+          intent: 'search_admissions',
+          extracted_filters: {},
+          clarification_needed: false,
+          answer: '',
+          result_count: data.result_count ?? 0,
+          results: (data.results || []) as AiChatResponse['results'],
+        })
+      }
+      return 'I could not generate a response right now. Please try again with a more specific question.'
     }
-
-    if (lower.includes('compare') || lower.includes('university')) {
-      suggestions.push('Use Compare to evaluate fee, deadline, and degree details side by side.')
-      suggestions.push('Save programs first, then compare from your watchlist.')
-    }
-
-    if (lower.includes('requirement') || lower.includes('eligibility')) {
-      suggestions.push('Open a program detail page to review official requirements and documents.')
-      suggestions.push('Filter search by degree level and city to narrow matching programs.')
-    }
-
-    if (suggestions.length === 0) {
-      suggestions.push('Try a shorter query, for example: "Show deadlines this week".')
-      suggestions.push('You can also use quick actions below for common admission tasks.')
-    }
-
-    return [
-      'AI is temporarily unavailable. You can continue with these steps:',
-      ...suggestions.map((s) => `- ${s}`),
-    ].join('\n')
-  }
-
-  const isRefusalReply = (text: string): boolean => {
-    const lower = text.toLowerCase()
-    return (
-      lower.includes('i can only help with') ||
-      lower.includes('i cannot assist') ||
-      lower.includes('cannot manage') ||
-      lower.includes('i cannot access')
-    )
-  }
-
-  const buildGuidanceResponse = (query: string): string => {
-    const lower = query.toLowerCase()
-
-    if (lower.includes('compare')) {
-      return [
-        'To compare universities:',
-        '- Save programs you like first.',
-        '- Open Compare and select at least two programs.',
-        '- Review fee, deadline, and eligibility side by side.',
-      ].join('\n')
-    }
-
-    if (lower.includes('alert') || lower.includes('watchlist') || lower.includes('expired')) {
-      return [
-        'To manage watchlist and alerts:',
-        '- Open Watchlist and enable reminders for important programs.',
-        '- Check Deadlines for urgent items each week.',
-        '- Remove expired entries to keep recommendations relevant.',
-      ].join('\n')
-    }
-
-    if (lower.includes('status') || lower.includes('requirement') || lower.includes('eligibility')) {
-      return [
-        'Admissions help:',
-        '- Verified means the listing is approved and trusted.',
-        '- Pending means review is still in progress.',
-        '- Open program details for exact eligibility and document requirements.',
-      ].join('\n')
-    }
-
-    return [
-      'I can help with student admissions tasks:',
-      '- Find matching programs',
-      '- Compare universities',
-      '- Track deadlines and statuses',
-    ].join('\n')
-  }
-
-  const resolveAssistantReply = (query: string, answer: string | undefined): string => {
-    if (!answer) return buildFallbackResponse(query)
     if (isRefusalReply(answer)) return buildGuidanceResponse(query)
     return answer
   }
@@ -129,43 +67,70 @@ export default function ChatModal() {
     const userText = quickMessage || inputText.trim()
     if (!userText) return
 
-    const newMessage: Message = {
+    if (!isAuthenticated) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Please sign in to use the AI assistant.',
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: userText,
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, newMessage])
+    const historySnapshot = buildHistoryFromModalMessages(messages)
+
+    setMessages((prev) => [...prev, userMessage])
     setInputText('')
     setIsTyping(true)
 
-    const historySnapshot: ChatHistoryEntry[] = messages
-      .filter((m) => m.id !== '1')
-      .slice(-4)
-      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.content }))
+    const requestWithRetry = async () => {
+      try {
+        return await aiService.chat(userText, context, historySnapshot)
+      } catch (firstError) {
+        const axiosError = firstError as AxiosError<{ message?: string }>
+        const status = axiosError.response?.status
+        if (!isTransientStatus(status)) throw firstError
+        await new Promise<void>((resolve) => {
+          setTimeout(() => resolve(), 500)
+        })
+        return await aiService.chat(userText, context, historySnapshot)
+      }
+    }
 
     try {
-      const response = await aiService.chat(userText, context, historySnapshot)
+      const response = await requestWithRetry()
       setAvailability('online')
+
+      const formatted = formatAiChatAnswer(response.data)
+      const withResults = appendResultsToAnswer(formatted, response.data)
+      const finalText = resolveAssistantReply(userText, withResults, response.data)
+
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: resolveAssistantReply(userText, response.data.answer?.trim()),
+        content: finalText,
         timestamp: new Date(),
       }
 
       setMessages((prev) => [...prev, aiResponse])
-    } catch {
+    } catch (error) {
+      setAvailability('offline')
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: buildFallbackResponse(userText),
+        content: getAiErrorMessage(error),
         timestamp: new Date(),
       }
-
-      setAvailability('fallback')
-
       setMessages((prev) => [...prev, aiResponse])
     } finally {
       setIsTyping(false)
@@ -183,7 +148,7 @@ export default function ChatModal() {
   }, [messages])
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || !isAuthenticated) {
       return
     }
 
@@ -194,17 +159,17 @@ export default function ChatModal() {
       .health()
       .then((response) => {
         if (!isMounted) return
-        setAvailability(response.data.ready ? 'online' : 'fallback')
+        setAvailability(response.data.ready ? 'online' : 'offline')
       })
       .catch(() => {
         if (!isMounted) return
-        setAvailability('fallback')
+        setAvailability('offline')
       })
 
     return () => {
       isMounted = false
     }
-  }, [isOpen])
+  }, [isOpen, isAuthenticated])
 
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={closeChat}>
@@ -214,7 +179,6 @@ export default function ChatModal() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <View style={styles.chatContainer}>
-          {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <View style={styles.aiAvatarContainer}>
@@ -230,7 +194,7 @@ export default function ChatModal() {
                         ? styles.statusOnline
                         : availability === 'checking'
                         ? styles.statusChecking
-                        : styles.statusFallback,
+                        : styles.statusOffline,
                     ]}
                   />
                   <Text style={styles.headerSubtitle}>{context} • {subtitleStatus}</Text>
@@ -242,15 +206,14 @@ export default function ChatModal() {
             </Pressable>
           </View>
 
-          {availability === 'fallback' && (
+          {availability === 'offline' && (
             <View style={styles.statusBanner}>
               <Text style={styles.statusBannerText}>
-                Live AI is unavailable right now. Guided mode is active.
+                AI service is unavailable. Check your connection or sign in again.
               </Text>
             </View>
           )}
 
-          {/* Quick Actions */}
           <View style={styles.quickActionsContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActions}>
               {quickActions.map((action, index) => (
@@ -261,7 +224,6 @@ export default function ChatModal() {
             </ScrollView>
           </View>
 
-          {/* Messages */}
           <ScrollView ref={scrollViewRef} style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}>
             {messages.map((message) => (
               <View key={message.id} style={[styles.messageBubble, message.role === 'user' ? styles.userBubble : styles.aiBubble]}>
@@ -294,7 +256,6 @@ export default function ChatModal() {
             )}
           </ScrollView>
 
-          {/* Input */}
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -313,7 +274,7 @@ export default function ChatModal() {
               onPress={() => {
                 void handleSend()
               }}
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || isTyping}
             >
               <Text style={styles.sendIcon}>➤</Text>
             </Pressable>
@@ -395,7 +356,7 @@ const styles = StyleSheet.create({
   statusChecking: {
     backgroundColor: '#F59E0B',
   },
-  statusFallback: {
+  statusOffline: {
     backgroundColor: '#EF4444',
   },
   statusBanner: {

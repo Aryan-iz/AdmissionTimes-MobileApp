@@ -22,18 +22,8 @@ import WatchlistScreen from '../screens/student/WatchlistScreen.tsx'
 import StudentNotificationsScreen from '../screens/student/StudentNotificationsScreen.tsx'
 import ProgramDetailScreen from '../screens/student/ProgramDetailScreen.tsx'
 
-export type RootStackParamList = {
-  Login: undefined
-  SignUp: undefined
-
-  StudentDashboard: undefined
-  StudentSearch: undefined
-  StudentCompare: { ids?: string[] } | undefined
-  StudentDeadlines: undefined
-  StudentWatchlist: undefined
-  StudentNotifications: undefined
-  ProgramDetail: { id: string }
-}
+export type { RootStackParamList } from './types'
+import type { RootStackParamList } from './types'
 
 const Stack = createStackNavigator<RootStackParamList>()
 

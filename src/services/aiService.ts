@@ -1,16 +1,10 @@
 import apiClient from './apiClient';
 import type { ApiResponse } from './types';
+import type { ChatHistoryMessage } from '../utils/aiChatUtils';
 
 export interface ChatHistoryEntry {
   role: 'user' | 'assistant' | 'ai'
   text: string
-}
-
-interface AiHealthResponse {
-  enabled: boolean;
-  provider: string;
-  model: string;
-  ready: boolean;
 }
 
 export interface AiChatResponse {
@@ -39,25 +33,50 @@ export interface AiChatResponse {
   }>;
 }
 
+interface AiHealthResponse {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  ready: boolean;
+}
+
+/** Align request shape with web frontend (history in context + conversation_history). */
 export const aiService = {
   chat: async (
     message: string,
     conversationContext?: string,
-    history?: ChatHistoryEntry[]
+    history?: ChatHistoryEntry[] | ChatHistoryMessage[]
   ): Promise<ApiResponse<AiChatResponse>> => {
-    const response = await apiClient.post('/ai/chat', {
-      message,
-      conversation_context: conversationContext?.slice(0, 3000) || undefined,
-      conversation_history: history?.slice(-8).map((entry) => ({
-        role: entry.role === 'ai' ? 'assistant' : entry.role,
-        text: entry.text.slice(0, 500),
-      })),
-    });
+    let fullContext = conversationContext || '';
+    const normalizedHistory = (history || []).map((entry) => ({
+      role: entry.role === 'ai' ? ('assistant' as const) : entry.role === 'user' ? ('user' as const) : ('assistant' as const),
+      text: entry.text.slice(0, 500),
+    }));
+
+    if (normalizedHistory.length > 0) {
+      const historyStr = normalizedHistory
+        .slice(-8)
+        .map((h) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text.slice(0, 200)}`)
+        .join('\n');
+      fullContext = fullContext
+        ? `${fullContext}\nRecent messages:\n${historyStr}`
+        : `Recent messages:\n${historyStr}`;
+    }
+
+    const response = await apiClient.post(
+      '/ai/chat',
+      {
+        message,
+        conversation_context: fullContext.slice(0, 3000) || undefined,
+        conversation_history: normalizedHistory.slice(-8),
+      },
+      { timeout: 60000 }
+    );
     return response.data;
   },
 
   health: async (): Promise<ApiResponse<AiHealthResponse>> => {
-    const response = await apiClient.get('/ai/health');
+    const response = await apiClient.get('/ai/health', { timeout: 15000 });
     return response.data;
   },
 };

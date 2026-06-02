@@ -6,6 +6,8 @@ export type NotificationType = 'alert' | 'system' | 'admission'
 
 export interface StudentAdmission {
   id: string
+  sourceAdmissionId?: string
+  dataOrigin?: string
   university: string
   program: string
   degree: string
@@ -31,6 +33,7 @@ export interface StudentAdmission {
   admissionPortalLink?: string
   alertEnabled?: boolean
   saved?: boolean
+  watchlistId?: string
   isNew?: boolean // For new admission slider
 }
 

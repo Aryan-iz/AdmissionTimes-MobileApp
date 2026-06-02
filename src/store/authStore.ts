@@ -15,6 +15,7 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authService, supabase, signOutUser, onAuthStateChange } from '../services'
+import { resetStudentSession } from './sessionCleanup'
 import type { User } from '../services/types'
 
 // Re-export types
@@ -102,6 +103,29 @@ const assertStudentRole = async (user: AuthUser) => {
   return user
 }
 
+const isStaleAuthError = (error: unknown): boolean => {
+  const message = String((error as { message?: string })?.message || '').toLowerCase()
+  return (
+    message.includes('refresh token') ||
+    message.includes('invalid refresh') ||
+    message.includes('session not found') ||
+    message.includes('jwt expired')
+  )
+}
+
+const clearStaleAuthSession = async (
+  set: (partial: Partial<AuthStoreState>) => void
+): Promise<void> => {
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+    // Session may already be invalid on device.
+  }
+  await AsyncStorage.removeItem(STORAGE_KEY)
+  resetStudentSession()
+  set({ user: null, isAuthenticated: false, error: null, isLoading: false })
+}
+
 const initialState = {
   user: null,
   isAuthenticated: false,
@@ -130,6 +154,11 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError) {
+        if (isStaleAuthError(sessionError)) {
+          console.warn('⚠️ [authStore] Stale session cleared (invalid refresh token)')
+          await clearStaleAuthSession(set)
+          return
+        }
         throw sessionError
       }
 
@@ -153,6 +182,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         await AsyncStorage.removeItem(STORAGE_KEY)
       }
     } catch (error: any) {
+      if (isStaleAuthError(error)) {
+        console.warn('⚠️ [authStore] Stale session cleared during auth check')
+        await clearStaleAuthSession(set)
+        return
+      }
+
       console.error('❌ [authStore] Auth check failed:', error)
 
       const isNetworkError =
@@ -322,6 +357,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       // Clear storage
       await AsyncStorage.removeItem(STORAGE_KEY)
 
+      resetStudentSession()
+
       set({ user: null, isAuthenticated: false, error: null })
 
       console.log('✅ [authStore] User signed out successfully')
@@ -383,6 +420,7 @@ authStoreGlobal.__admissionTimesAuthStateUnsubscribe = onAuthStateChange((event)
 
   if (event === 'SIGNED_OUT') {
     useAuthStore.getState().setUser(null)
+    resetStudentSession()
   } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
     if (shouldSkipThrottledCheck) {
       return
