@@ -110,7 +110,16 @@ export const getAccessToken = async (): Promise<string | null> => {
     const { data, error } = await supabase.auth.getSession();
     
     if (error) {
-      console.error('❌ [Supabase] Failed to get session:', error.message);
+      const message = String(error.message || '').toLowerCase();
+      const isStaleSession =
+        message.includes('refresh token') ||
+        message.includes('invalid refresh') ||
+        message.includes('session not found');
+      if (isStaleSession) {
+        console.warn('⚠️ [Supabase] No valid session (stale refresh token)');
+      } else {
+        console.error('❌ [Supabase] Failed to get session:', error.message);
+      }
       return null;
     }
     

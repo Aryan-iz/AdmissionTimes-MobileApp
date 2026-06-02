@@ -22,16 +22,17 @@
 
 import 'react-native-gesture-handler'
 
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
+import { NavigationContainer } from '@react-navigation/native'
 import { View, StatusBar, AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useEffect, useRef, useState } from 'react'
 import type { NotificationResponse, EventSubscription } from 'expo-notifications'
 import Toast from 'react-native-toast-message'
 
-import { AiProvider } from './src/contexts/AiContext.tsx'
+import { AiProvider, useAi } from './src/contexts/AiContext.tsx'
+import StudentAiOverlay from './src/components/ai/StudentAiOverlay.tsx'
 import AppNavigator from './src/navigation/AppNavigator.tsx'
-import type { RootStackParamList } from './src/navigation/AppNavigator.tsx'
+import { navigationRef } from './src/navigation/navigationRef'
 import { useAuthStore, useStudentStore } from './src/store'
 import { config } from './src/config/env'
 import {
@@ -45,16 +46,20 @@ import { subscribeToStudentNotificationInserts } from './src/realtime/notificati
 import { notificationsService } from './src/services/notificationsService'
 import { toastConfig } from './src/services/toast'
 
-const navigationRef = createNavigationContainerRef<RootStackParamList>()
+function syncNavigationRoute(setActiveRouteName: (routeName?: string) => void) {
+  const routeName = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined
+  setActiveRouteName(routeName)
+}
 
-export default function App() {
+function AppNavigationHost() {
+  const { setActiveRouteName } = useAi()
+  const user = useAuthStore((state) => state.user)
+  const refreshNotifications = useStudentStore((state) => state.refreshNotifications)
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
   const appState = useRef(AppState.currentState)
   const previousStudentUserIdRef = useRef<string | null>(null)
   const registeredTokenKeyRef = useRef<string | null>(null)
   const recentSeenNotificationIdsRef = useRef<Map<string, number>>(new Map())
-  const user = useAuthStore(state => state.user)
-  const refreshNotifications = useStudentStore(state => state.refreshNotifications)
-  const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
 
   const pruneSeenNotificationIds = () => {
     const now = Date.now()
@@ -87,19 +92,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Set status bar on mount
-    StatusBar.setBarStyle('dark-content')
-    if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor('#FFFFFF')
-    }
-
-    // Listen for app state changes (background <-> foreground)
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        // App has come to the foreground, reset status bar
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         StatusBar.setBarStyle('dark-content')
         if (Platform.OS === 'android') {
           StatusBar.setBackgroundColor('#FFFFFF')
@@ -148,11 +142,7 @@ export default function App() {
 
       refreshNotifications().catch(() => {})
 
-      if (
-        admissionId &&
-        user?.role === 'student' &&
-        navigationRef.isReady()
-      ) {
+      if (admissionId && user?.role === 'student' && navigationRef.isReady()) {
         navigationRef.navigate('ProgramDetail', { id: String(admissionId) })
       }
     })
@@ -239,7 +229,6 @@ export default function App() {
             return
           }
 
-          // Avoid duplicate banners when Expo push is active.
           if (config.enablePushNotifications && expoPushToken) {
             return
           }
@@ -284,17 +273,35 @@ export default function App() {
   }, [expoPushToken, refreshNotifications, user?.id, user?.role])
 
   return (
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => syncNavigationRoute(setActiveRouteName)}
+      onStateChange={() => syncNavigationRoute(setActiveRouteName)}
+    >
+      <AppNavigator />
+      <StudentAiOverlay />
+    </NavigationContainer>
+  )
+}
+
+export default function App() {
+  useEffect(() => {
+    StatusBar.setBarStyle('dark-content')
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('#FFFFFF')
+    }
+  }, [])
+
+  return (
     <SafeAreaProvider>
       <View style={{ flex: 1 }}>
-        <StatusBar 
-          barStyle="dark-content" 
+        <StatusBar
+          barStyle="dark-content"
           backgroundColor="#FFFFFF"
           translucent={false}
         />
         <AiProvider>
-          <NavigationContainer ref={navigationRef}>
-            <AppNavigator />
-          </NavigationContainer>
+          <AppNavigationHost />
         </AiProvider>
         <Toast config={toastConfig} topOffset={52} />
       </View>

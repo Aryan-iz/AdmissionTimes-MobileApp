@@ -3,7 +3,8 @@ import { ScrollView, View, Text, Pressable, StyleSheet, Linking } from 'react-na
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useStudentStore } from '../../store'
+import { useStudentStore, selectSavedAdmissions } from '../../store'
+import { dedupeSavedAdmissions } from '../../utils/watchlistUtils'
 import { getStatusColor, StudentAdmission } from '../../data/studentData'
 import { TitleHeader, CustomLoader } from '../../components/ui'
 import { Feather } from '@expo/vector-icons'
@@ -82,17 +83,11 @@ export default function CompareScreen() {
   const route = useRoute<CompareScreenRouteProp>()
   const navigation = useNavigation<CompareScreenNavigationProp>()
   const admissions = useStudentStore(state => state.admissions)
-  const savedIds = useStudentStore(state => state.savedAdmissions)
+  const savedAdmissions = useStudentStore(selectSavedAdmissions)
+  const dedupedSaved = useMemo(() => dedupeSavedAdmissions(savedAdmissions), [savedAdmissions])
   const [isLoading, setIsLoading] = useState(true)
   
-  // Helper to get admission by ID
   const getAdmissionById = (id: string) => admissions.find(a => a.id === id)
-  
-  // Compute saved admissions from IDs
-  const savedAdmissions = useMemo(
-    () => admissions.filter(a => savedIds.includes(a.id)),
-    [admissions, savedIds]
-  )
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 700)
@@ -107,8 +102,8 @@ export default function CompareScreen() {
         .filter((a): a is StudentAdmission => a !== undefined)
     }
     // Default: use first 3 saved admissions
-    return savedAdmissions.slice(0, 3)
-  }, [route.params?.ids, getAdmissionById, savedAdmissions])
+    return dedupedSaved.slice(0, 4)
+  }, [route.params?.ids, admissions, dedupedSaved])
 
   const highlights = useMemo(() => {
     if (selectedAdmissions.length === 0) return []

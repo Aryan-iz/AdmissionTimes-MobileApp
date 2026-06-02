@@ -16,10 +16,14 @@ export default function SearchAdmissionsScreen() {
   const user = useAuthStore(state => state.user)
   const signOut = useAuthStore(state => state.signOut)
   const admissions = useStudentStore(state => state.admissions)
-  const savedIds = useStudentStore(state => state.savedAdmissions)
   const notifications = useStudentStore(state => state.notifications)
   const toggleSaved = useStudentStore(state => state.toggleSaved)
   const searchAdmissions = useStudentStore(state => state.searchAdmissions)
+
+  const isAdmissionSaved = (admission: (typeof admissions)[number]) => {
+    const stored = admissions.find((a) => a.id === admission.id)
+    return Boolean(stored?.saved ?? admission.saved)
+  }
   
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [filtersVisible, setFiltersVisible] = useState(false)
@@ -376,7 +380,7 @@ export default function SearchAdmissionsScreen() {
           <View style={styles.gridContainer}>
             {filteredAdmissions.map((admission) => {
               const statusColors = getStatusColor(admission.status)
-              const isSaved = savedIds.includes(admission.id)
+              const isSaved = isAdmissionSaved(admission)
               const isComparing = compareIds.includes(admission.id)
               const daysLeft = admission.daysRemaining
 
@@ -437,7 +441,7 @@ export default function SearchAdmissionsScreen() {
           <View style={styles.listContainer}>
             {filteredAdmissions.map((admission) => {
               const statusColors = getStatusColor(admission.status)
-              const isSaved = savedIds.includes(admission.id)
+              const isSaved = isAdmissionSaved(admission)
               const isComparing = compareIds.includes(admission.id)
               const daysLeft = admission.daysRemaining
 

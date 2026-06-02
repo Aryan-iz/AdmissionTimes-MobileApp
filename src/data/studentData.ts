@@ -33,6 +33,7 @@ export interface StudentAdmission {
   admissionPortalLink?: string
   alertEnabled?: boolean
   saved?: boolean
+  watchlistId?: string
   isNew?: boolean // For new admission slider
 }
 

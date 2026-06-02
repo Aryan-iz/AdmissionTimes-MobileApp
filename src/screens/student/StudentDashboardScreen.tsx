@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { ScrollView, Text, View, Pressable, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -6,85 +6,113 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator.tsx'
 import { useAuthStore, useStudentStore } from '../../store'
-import { getStatusColor, isAdmissionActiveByPolicy, type StudentAdmission } from '../../data/studentData'
+import { useStudentDashboardData } from '../../hooks/useStudentDashboardData'
+import {
+  RECOMMENDATION_COUNT_LIMIT,
+  RECOMMENDATION_RENDER_LIMIT,
+  limitRecommendations,
+} from '../../utils/recommendationUtils'
+import {
+  resolveUpcomingDeadlineStat,
+  resolveUrgentDeadlineStat,
+  UPCOMING_DEADLINE_SIDEBAR_WINDOW_DAYS,
+  UPCOMING_DEADLINE_STAT_WINDOW_DAYS,
+} from '../../utils/studentStatsUtils'
+import { countUniqueSavedAdmissions } from '../../utils/watchlistUtils'
+import { isAdmissionActiveByPolicy } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
-import { AiAssistantButton, ChatModal } from '../../components/ai'
 import { NewAdmissionSlider } from '../../components/student'
 import { useAi } from '../../contexts/AiContext'
 import { Feather } from '@expo/vector-icons'
-
-const RECOMMENDATION_MIN_SCORE = 50
+import { getUniversityById } from '../../services/universitiesService'
 
 export default function StudentDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const admissions = useStudentStore(state => state.admissions)
-  const savedAdmissionsIds = useStudentStore(state => state.savedAdmissions)
   const notifications = useStudentStore(state => state.notifications)
   const dashboardStats = useStudentStore(state => state.stats)
-  const loading = useStudentStore(state => state.loading)
-  const fetchDashboardData = useStudentStore(state => state.fetchDashboardData)
+  const error = useStudentStore(state => state.error)
   const user = useAuthStore(state => state.user)
-  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
   const signOut = useAuthStore(state => state.signOut)
   const { setContext } = useAi()
-  
-  // Compute saved admissions from IDs
-  const savedAdmissions = useMemo(
-    () => admissions.filter(a => savedAdmissionsIds.includes(a.id)),
-    [admissions, savedAdmissionsIds]
-  )
-  // Fetch dashboard data when user is authenticated
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      fetchDashboardData().catch((err) => {
-        console.error('❌ [StudentDashboard] Dashboard data fetch failed:', err)
-      })
-    }
-  }, [fetchDashboardData, isAuthenticated, user])
+  const { loading, refetch } = useStudentDashboardData()
 
-  // Set AI context
+  const displayName =
+    user?.name?.trim() ||
+    user?.display_name?.trim() ||
+    (user?.email ? user.email.split('@')[0] : 'Student')
+
   useEffect(() => {
     setContext('Student Dashboard')
   }, [setContext])
 
   const stats = useMemo(() => {
-    if (dashboardStats) {
-      console.log('✅ [StudentDashboard] Using backend stats:', dashboardStats)
-      return {
-        active: dashboardStats.active_admissions,
-        saved: dashboardStats.saved_count,
-        upcoming: dashboardStats.upcoming_deadlines,
-        urgent: dashboardStats.urgent_deadlines,
-      }
-    }
+    const clientSaved = countUniqueSavedAdmissions(admissions.filter((a) => a.saved))
+    const clientActive = admissions.filter(isAdmissionActiveByPolicy).length
+    const clientUpcoming = resolveUpcomingDeadlineStat(admissions, dashboardStats?.upcoming_deadlines)
+    const clientUrgent = resolveUrgentDeadlineStat(admissions, dashboardStats?.urgent_deadlines)
+    const clientRecommendations = Math.min(RECOMMENDATION_COUNT_LIMIT, limitRecommendations(admissions).length)
 
-    console.warn('⚠️ [StudentDashboard] No backend stats available, showing zeros')
     return {
-      active: 0,
-      saved: 0,
-      upcoming: 0,
-      urgent: 0,
+      active: dashboardStats?.active_admissions ?? clientActive,
+      saved: dashboardStats?.saved_count ?? clientSaved,
+      upcoming: clientUpcoming,
+      urgent: clientUrgent,
+      recommendations: dashboardStats?.recommendations_count
+        ? Math.min(RECOMMENDATION_COUNT_LIMIT, dashboardStats.recommendations_count)
+        : clientRecommendations,
     }
-  }, [dashboardStats])
+  }, [dashboardStats, admissions])
 
   const upcomingDeadlines = useMemo(() => {
     return admissions
-      .filter((a) => {
-        const daysRemaining = a.daysRemaining
-        // Only show deadlines for active admissions that are upcoming (not past)
-        return a.programStatus !== 'Closed' && daysRemaining >= 0 && daysRemaining <= 30
-      })
-      .map((a) => ({ ...a }))
+      .filter(
+        (a) =>
+          a.programStatus !== 'Closed' &&
+          a.daysRemaining >= 0 &&
+          a.daysRemaining <= UPCOMING_DEADLINE_SIDEBAR_WINDOW_DAYS
+      )
       .sort((a, b) => a.daysRemaining - b.daysRemaining)
       .slice(0, 3)
   }, [admissions])
 
-  const recommendedAdmissions = useMemo(() => {
-    return admissions
-      .filter((a) => a.programStatus !== 'Closed')
-      .filter((a) => (a.matchNumeric || 0) >= RECOMMENDATION_MIN_SCORE)
-      .sort((a, b) => (b.matchNumeric || 0) - (a.matchNumeric || 0))
-  }, [admissions])
+  const recommendedAdmissions = useMemo(() => limitRecommendations(admissions), [admissions])
+
+  const [resolvedUniversities, setResolvedUniversities] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let mounted = true
+
+    const toResolve = recommendedAdmissions.filter((a) => {
+      const anyA = a as any
+      return !anyA.university_name && (anyA.university_id || anyA.universityId)
+    })
+
+    if (toResolve.length === 0) return
+
+    ;(async () => {
+      const results: Record<string, string> = {}
+      for (const admission of toResolve.slice(0, 10)) {
+        const anyA = admission as any
+        const uniId = anyA.university_id ?? anyA.universityId
+        if (!uniId) continue
+        try {
+          const uni = await getUniversityById(uniId)
+          if (uni && uni.name) {
+            results[admission.id] = uni.name
+          }
+        } catch (err) {
+          // ignore
+        }
+      }
+
+      if (mounted && Object.keys(results).length > 0) {
+        setResolvedUniversities((prev) => ({ ...prev, ...results }))
+      }
+    })()
+
+    return () => { mounted = false }
+  }, [recommendedAdmissions])
 
   const recentActivities = useMemo(() => {
     const activities: Array<{ action: string; time: string }> = []
@@ -94,9 +122,10 @@ export default function StudentDashboardScreen() {
       activities.push({ action: n.title, time: n.timeAgo })
     })
 
-    if (stats.saved > 0) {
+    const savedCount = countUniqueSavedAdmissions(admissions.filter((a) => a.saved))
+    if (savedCount > 0) {
       activities.push({
-        action: `${stats.saved} program${stats.saved > 1 ? 's' : ''} saved to watchlist`,
+        action: `${savedCount} program${savedCount > 1 ? 's' : ''} saved to watchlist`,
         time: 'Recently',
       })
     }
@@ -110,7 +139,7 @@ export default function StudentDashboardScreen() {
     }
 
     return activities.slice(0, 3)
-  }, [notifications, savedAdmissions, admissions, stats.saved])
+  }, [notifications, admissions])
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
@@ -125,6 +154,15 @@ export default function StudentDashboardScreen() {
       {/* New Admission Slider - Fetches data from store automatically */}
       {!loading && <NewAdmissionSlider />}
       
+      {error && !loading ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{error}</Text>
+          <Pressable style={styles.errorRetryButton} onPress={() => void refetch()}>
+            <Text style={styles.errorRetryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <CustomLoader size={60} color="#2563EB" />
@@ -134,7 +172,7 @@ export default function StudentDashboardScreen() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
         {/* Hero Section */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Welcome back, {user?.name || 'Aryan'}!</Text>
+          <Text style={styles.heroTitle}>Welcome back, {displayName}!</Text>
           <Text style={styles.heroSubtitle}>
             Track your admission progress and discover new opportunities.
           </Text>
@@ -182,7 +220,7 @@ export default function StudentDashboardScreen() {
               <Feather name="star" size={18} color="#2563EB" />
             </View>
             <Text style={styles.statsLabel}>Recommendations</Text>
-            <Text style={styles.statsValue}>{dashboardStats?.recommendations_count ?? recommendedAdmissions.length}</Text>
+            <Text style={styles.statsValue}>{stats.recommendations}</Text>
             <Text style={styles.statsSubtext}>Matched programs</Text>
           </Pressable>
 
@@ -208,7 +246,9 @@ export default function StudentDashboardScreen() {
             <Text style={styles.statsLabel}>Upcoming Deadlines</Text>
             <Text style={styles.statsValue}>{stats.upcoming}</Text>
             <Text style={[styles.statsSubtext, { color: stats.urgent > 0 ? '#EF4444' : '#6B7280' }]}>
-              {stats.urgent > 0 ? `${stats.urgent} urgent` : 'In next 7 days'}
+              {stats.urgent > 0
+                ? `${stats.urgent} urgent`
+                : `Closing within ${UPCOMING_DEADLINE_STAT_WINDOW_DAYS} days`}
             </Text>
           </Pressable>
         </View>
@@ -229,18 +269,35 @@ export default function StudentDashboardScreen() {
                 {recommendedAdmissions.length === 0 ? (
                   <Text style={styles.mutedText}>No recommendations available</Text>
                 ) : (
-                  recommendedAdmissions.slice(0, 3).map((admission) => {
+                  recommendedAdmissions.slice(0, RECOMMENDATION_RENDER_LIMIT).map((admission) => {
                     const match = Math.round(admission.matchNumeric || 0)
+                    // Prefer enriched recommendation fields when available
+                    const rawUni = String(resolvedUniversities[admission.id] || (admission as any).university_name || admission.university || '')
+                    // Normalize university name: strip generic 'unknown' tokens
+                    const normalizedUni = rawUni.replace(/unknown/ig, '').trim()
+                    const place = [ (admission as any).university_city, admission.city, admission.location ]
+                      .filter(Boolean)
+                      .join(', ')
+
+                    const title = normalizedUni.length > 0
+                      ? normalizedUni
+                      : (place || ((admission as any).university_id ? `University ${ (admission as any).university_id }` : 'University'))
+
                     return (
-                      <View key={admission.id} style={styles.recommendationItem}>
+                      <Pressable
+                        key={admission.id}
+                        style={styles.recommendationItem}
+                        onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
+                      >
                         <View style={styles.recommendationBadge}>
                           <Text style={styles.recommendationBadgeText}>{match}%</Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.deadlineUniversity}>{admission.university}</Text>
-                          <Text style={styles.deadlineProgram}>{admission.program}</Text>
+                          <Text style={styles.deadlineUniversity} numberOfLines={1}>{title}</Text>
+                          <Text style={styles.deadlineProgram} numberOfLines={1}>{admission.program}</Text>
+                          {place ? <Text style={styles.recommendationPlace} numberOfLines={1}>{place}</Text> : null}
                         </View>
-                      </View>
+                      </Pressable>
                     )
                   })
                 )}
@@ -318,10 +375,6 @@ export default function StudentDashboardScreen() {
         </View>
       </ScrollView>
       )}
-      
-      {/* AI Chat Assistant */}
-      <AiAssistantButton />
-      <ChatModal />
     </SafeAreaView>
   )
 }
@@ -337,6 +390,32 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 14,
     color: '#6B7280',
+  },
+  errorBanner: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorBannerText: {
+    fontSize: 13,
+    color: '#991B1B',
+    marginBottom: 8,
+  },
+  errorRetryButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#EF4444',
+    borderRadius: 6,
+  },
+  errorRetryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   container: {
     padding: 16,
@@ -608,6 +687,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#1D4ED8',
+  },
+  recommendationPlace: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
   },
   activityItem: {
     flexDirection: 'row',

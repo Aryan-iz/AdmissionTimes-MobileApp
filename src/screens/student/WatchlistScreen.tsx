@@ -1,11 +1,14 @@
-import { useState, useMemo, useEffect } from 'react'
-import { ScrollView, Text, View, Pressable, TextInput, StyleSheet, Switch } from 'react-native'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { ScrollView, Text, View, Pressable, TextInput, StyleSheet, Switch, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
 
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore, useStudentStore } from '../../store'
+import { useStudentDashboardData } from '../../hooks/useStudentDashboardData'
+import { countUpcomingDeadlinesInWindow } from '../../utils/studentStatsUtils'
+import { dedupeSavedAdmissions } from '../../utils/watchlistUtils'
 import { getStatusColor } from '../../data/studentData'
 import { PremiumHeader, CustomLoader } from '../../components/ui'
 import { Feather } from '@expo/vector-icons'
@@ -15,32 +18,26 @@ export default function WatchlistScreen() {
   const user = useAuthStore(state => state.user)
   const signOut = useAuthStore(state => state.signOut)
   const admissions = useStudentStore(state => state.admissions)
-  const savedIds = useStudentStore(state => state.savedAdmissions)
   const notifications = useStudentStore(state => state.notifications)
   const toggleSaved = useStudentStore(state => state.toggleSaved)
   const toggleAlert = useStudentStore(state => state.toggleAlert)
+  const { refetch } = useStudentDashboardData()
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch()
+    }, [refetch])
+  )
 
   const [searchQuery, setSearchQuery] = useState('')
   const [cityFilter, setCityFilter] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isLoadingResults, setIsLoadingResults] = useState(false)
 
-  const savedAdmissions = useMemo(() => {
-    const grouped = new Map<string, typeof admissions[number]>()
-
-    admissions.forEach((admission) => {
-      if (!savedIds.includes(admission.id)) {
-        return
-      }
-
-      const groupKey = admission.sourceAdmissionId || admission.id.split('::program::')[0] || admission.id
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, admission)
-      }
-    })
-
-    return Array.from(grouped.values())
-  }, [admissions, savedIds])
+  const savedAdmissions = useMemo(
+    () => dedupeSavedAdmissions(admissions.filter((a) => a.saved)),
+    [admissions]
+  )
 
   const cities = useMemo(() => {
     return Array.from(new Set(savedAdmissions.map(a => a.city).filter(Boolean))).sort()
@@ -70,20 +67,34 @@ export default function WatchlistScreen() {
     return () => clearTimeout(timer)
   }, [searchQuery, cityFilter, savedAdmissions.length])
 
-  const upcomingCount = useMemo(() => {
-    return savedAdmissions.filter(a => a.daysRemaining >= 0 && a.daysRemaining <= 30).length
-  }, [savedAdmissions])
+  const upcomingCount = useMemo(
+    () => countUpcomingDeadlinesInWindow(savedAdmissions),
+    [savedAdmissions]
+  )
 
   const toggleSelection = (id: string) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((i) => i !== id)
+      }
+      if (prev.length >= 4) {
+        Alert.alert('Compare programs', 'Please select a maximum of 4 programs to compare.')
+        return prev
+      }
+      return [...prev, id]
+    })
   }
 
   const handleCompare = () => {
     if (selectedIds.length >= 2 && selectedIds.length <= 4) {
       navigation.navigate('StudentCompare', { ids: selectedIds })
+      return
     }
+    if (selectedIds.length < 2) {
+      Alert.alert('Compare programs', 'Please select at least 2 programs to compare.')
+      return
+    }
+    Alert.alert('Compare programs', 'Please select a maximum of 4 programs to compare.')
   }
 
   const handleRemove = (id: string) => {

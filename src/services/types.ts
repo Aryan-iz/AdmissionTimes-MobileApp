@@ -143,6 +143,9 @@ export interface Admission {
   is_active?: boolean;
   university_id?: string | null;
   university_name?: string | null; // Included in joined queries
+  university_logo_url?: string | null;
+  university_city?: string | null;
+  university_country?: string | null;
   universities?: University | null;
   // Additional fields for dashboard responses
   saved?: boolean; // Indicates if user has saved/watchlisted this admission
