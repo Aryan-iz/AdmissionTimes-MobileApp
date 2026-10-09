@@ -33,6 +33,15 @@ export interface AiChatResponse {
   }>;
 }
 
+/** POST /ai/compare: a short comparison written from the programs' real data. */
+export interface AiCompareResponse {
+  summary: string;
+  highlights: string[];
+  method: 'ai' | 'fallback';
+  provider: 'gemini' | 'rules';
+  model?: string;
+}
+
 interface AiHealthResponse {
   enabled: boolean;
   provider: string;
@@ -70,6 +79,15 @@ export const aiService = {
         conversation_context: fullContext.slice(0, 3000) || undefined,
         conversation_history: normalizedHistory.slice(-8),
       },
+      { timeout: 60000 }
+    );
+    return response.data;
+  },
+
+  compare: async (admissionIds: string[], focus?: string): Promise<ApiResponse<AiCompareResponse>> => {
+    const response = await apiClient.post(
+      '/ai/compare',
+      { admission_ids: admissionIds, focus: focus?.trim() || undefined },
       { timeout: 60000 }
     );
     return response.data;

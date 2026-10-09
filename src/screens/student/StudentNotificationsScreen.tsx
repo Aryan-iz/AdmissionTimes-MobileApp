@@ -1,378 +1,252 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ScrollView, View, Text, Pressable, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useCallback, useMemo, useState } from 'react'
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { StackNavigationProp } from '@react-navigation/stack'
-import { RootStackParamList } from '../../navigation/AppNavigator'
-import { StudentNotification } from '../../data/studentData'
-import { useStudentStore } from '../../store'
-import { TitleHeader, CustomLoader } from '../../components/ui'
+import type { StackNavigationProp } from '@react-navigation/stack'
 import { Feather } from '@expo/vector-icons'
 
-type StudentNotificationsNavigationProp = StackNavigationProp<RootStackParamList, 'StudentNotifications'>
+import type { RootStackParamList } from '../../navigation/types'
+import { useStudentStore } from '../../store'
+import type { NotificationKind, StudentNotification } from '../../domain/notification'
+import { StudentScreen, EmptyState, Chip } from '../../components/ui'
+import { showErrorToast } from '../../services/toast'
+import { colors, font, radius, spacing } from '../../theme'
+
+type Tab = 'all' | 'unread' | NotificationKind
+
+const TABS: Array<{ value: Tab; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'unread', label: 'Unread' },
+  { value: 'deadline', label: 'Deadlines' },
+  { value: 'admission', label: 'Program updates' },
+  { value: 'system', label: 'Announcements' },
+]
+
+const KIND_ICON: Record<NotificationKind, { icon: keyof typeof Feather.glyphMap; color: string; bg: string }> = {
+  deadline: { icon: 'clock', color: colors.warning, bg: colors.warningSoft },
+  admission: { icon: 'book-open', color: colors.primary, bg: colors.primarySoft },
+  system: { icon: 'volume-2', color: colors.violet, bg: colors.violetSoft },
+}
 
 export default function StudentNotificationsScreen() {
-  const navigation = useNavigation<StudentNotificationsNavigationProp>()
-  const notifications = useStudentStore(state => state.notifications)
-  const markNotificationRead = useStudentStore(state => state.markNotificationRead)
-  const markAllNotificationsRead = useStudentStore(state => state.markAllNotificationsRead)
-  const refreshNotifications = useStudentStore(state => state.refreshNotifications)
-  const [activeTab, setActiveTab] = useState<'All' | 'alert' | 'admission' | 'system'>('All')
-  const [isLoading, setIsLoading] = useState(true)
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
+  const notifications = useStudentStore((state) => state.notifications)
+  const refreshNotifications = useStudentStore((state) => state.refreshNotifications)
+  const markRead = useStudentStore((state) => state.markNotificationRead)
+  const markAllRead = useStudentStore((state) => state.markAllNotificationsRead)
+  const [tab, setTab] = useState<Tab>('all')
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600)
-    return () => clearTimeout(timer)
-  }, [])
-
+  // Realtime and the app-level poll keep the list fresh; refresh again on focus.
   useFocusEffect(
-    useCallback(
-      () => {
-        refreshNotifications()
-        const interval = setInterval(() => {
-          refreshNotifications()
-        }, 30000)
-
-        return () => clearInterval(interval)
-      },
-      [refreshNotifications]
-    )
+    useCallback(() => {
+      void refreshNotifications()
+    }, [refreshNotifications])
   )
 
-  const filteredNotifications = useMemo(() => {
-    if (activeTab === 'All') {
-      return notifications
+  const visible = useMemo(
+    () =>
+      notifications.filter((n) => (tab === 'all' ? true : tab === 'unread' ? !n.read : n.kind === tab)),
+    [notifications, tab]
+  )
+  const unread = notifications.filter((n) => !n.read).length
+
+  const refresh = async () => {
+    setRefreshing(true)
+    await refreshNotifications({ force: true })
+    setRefreshing(false)
+  }
+
+  const open = async (notification: StudentNotification) => {
+    if (!notification.read) {
+      markRead(notification.id).catch(() => undefined)
     }
-    return notifications.filter(n => n.type === activeTab)
-  }, [notifications, activeTab])
-
-  const handleMarkAllRead = async () => {
-    await markAllNotificationsRead()
+    if (notification.admissionId) navigation.navigate('ProgramDetail', { id: notification.admissionId })
   }
 
-  const handleMarkRead = async (id: string) => {
-    await markNotificationRead(id)
-  }
-
-  const handleNotificationClick = async (notification: StudentNotification) => {
-    await handleMarkRead(notification.id)
-    if (notification.admissionId) {
-      navigation.navigate('ProgramDetail', { id: notification.admissionId })
+  const readAll = async () => {
+    try {
+      await markAllRead()
+    } catch {
+      showErrorToast('Could not mark as read', 'Check your connection and try again.')
     }
-  }
-
-  const handleRefresh = async () => {
-    await refreshNotifications()
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <TitleHeader title="Notifications" />
-
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <CustomLoader size={60} color="#2563EB" />
-          <Text style={styles.loadingText}>Loading notifications...</Text>
+    <StudentScreen refreshing={refreshing} onRefresh={() => void refresh()}>
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <Text style={styles.heading}>Notifications</Text>
+          <Text style={styles.summary}>{unread > 0 ? `${unread} unread` : 'You are all caught up'}</Text>
         </View>
-      ) : (
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.content}>
-          <Text style={styles.subtitle}>
-            Stay updated with admission changes, deadlines, and system alerts.
-          </Text>
+        {unread > 0 ? (
+          <Pressable style={styles.readAll} onPress={() => void readAll()} accessibilityRole="button" accessibilityLabel="Mark all read">
+            <Feather name="check" size={14} color={colors.primary} />
+            <Text style={styles.readAllText}>Mark all read</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
-          <View style={styles.actionButtons}>
-            <Pressable style={styles.actionButton} onPress={handleMarkAllRead}>
-              <Feather name="check" size={14} color="#374151" style={styles.actionButtonIcon} />
-              <Text style={styles.actionButtonText}>Mark All as Read</Text>
-            </Pressable>
-            <Pressable style={styles.refreshButton} onPress={handleRefresh}>
-              <Feather name="refresh-cw" size={13} color="#2563EB" style={styles.refreshButtonIcon} />
-              <Text style={styles.refreshButtonText}>Refresh</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.tabContainer}>
-              {(['All', 'Alerts', 'Admission', 'System'] as const).map((tab) => {
-                const tabValue =
-                  tab === 'All'
-                    ? 'All'
-                    : tab === 'Alerts'
-                      ? 'alert'
-                      : tab === 'Admission'
-                        ? 'admission'
-                        : 'system'
-                const isActive = activeTab === tabValue
-                return (
-                  <Pressable
-                    key={tab}
-                    onPress={() => setActiveTab(tabValue)}
-                    style={[styles.tab, isActive && styles.tabActive]}
-                  >
-                    <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
-                  </Pressable>
-                )
-              })}
-            </View>
-
-            <View style={styles.notificationsList}>
-              {filteredNotifications.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>No notifications found.</Text>
-                </View>
-              ) : (
-                filteredNotifications.map((notification) => (
-                  <Pressable
-                    key={notification.id}
-                    onPress={() => handleNotificationClick(notification)}
-                    style={[
-                      styles.notificationItem,
-                      !notification.read && styles.notificationItemUnread
-                    ]}
-                  >
-                    <View style={styles.notificationContent}>
-                      <View style={[styles.iconContainer, { backgroundColor: `${notification.iconColor}20` }]}>
-                        <Feather
-                          name={
-                            notification.type === 'alert'
-                              ? 'bell'
-                              : notification.type === 'admission'
-                                ? 'book-open'
-                                : 'settings'
-                          }
-                          size={18}
-                          color={notification.iconColor}
-                        />
-                      </View>
-                      <View style={styles.notificationText}>
-                        <View style={styles.notificationHeader}>
-                          <Text style={styles.notificationTitle} numberOfLines={2}>
-                            {notification.title}
-                          </Text>
-                          {!notification.read && <View style={styles.unreadDot} />}
-                        </View>
-                        <Text style={styles.notificationDescription} numberOfLines={2}>
-                          {notification.description}
-                        </Text>
-                        <Text style={styles.notificationTime}>{notification.timeAgo}</Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                ))
-              )}
-            </View>
-          </View>
-        </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        {TABS.map((option) => (
+          <Chip key={option.value} label={option.label} active={tab === option.value} onPress={() => setTab(option.value)} />
+        ))}
       </ScrollView>
+
+      {visible.length === 0 ? (
+        <EmptyState icon="bell" title={tab === 'unread' ? 'No unread notifications' : 'No notifications here'} />
+      ) : (
+        <View style={styles.list}>
+          {visible.map((notification, index) => {
+            const kind = KIND_ICON[notification.kind]
+            return (
+              <Pressable
+                key={notification.id}
+                onPress={() => void open(notification)}
+                style={({ pressed }) => [
+                  styles.item,
+                  index > 0 && styles.itemBorder,
+                  !notification.read && styles.itemUnread,
+                  pressed && styles.itemPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`${notification.read ? '' : 'Unread. '}${notification.title}`}
+              >
+                <View style={[styles.icon, { backgroundColor: kind.bg }]}>
+                  <Feather name={kind.icon} size={16} color={kind.color} />
+                </View>
+                <View style={styles.body}>
+                  <View style={styles.titleRow}>
+                    <Text style={[styles.title, !notification.read && styles.titleUnread]} numberOfLines={2}>
+                      {notification.title}
+                    </Text>
+                    {!notification.read ? <View style={styles.dot} /> : null}
+                  </View>
+                  <Text style={styles.message} numberOfLines={3}>
+                    {notification.description}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.time}>{notification.timeAgo}</Text>
+                    {notification.admissionId ? <Text style={styles.link}>View program</Text> : null}
+                  </View>
+                </View>
+              </Pressable>
+            )
+          })}
+        </View>
       )}
-    </SafeAreaView>
+    </StudentScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  actionButtons: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    gap: spacing.md,
   },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginRight: 12,
+  headerText: {
+    flex: 1,
   },
-  actionButtonIcon: {
-    marginRight: 8,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 'auto',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  refreshButtonIcon: {
-    marginRight: 6,
-  },
-  refreshButtonText: {
-    fontSize: 12,
+  heading: {
+    fontSize: font.display,
     fontWeight: '700',
-    color: '#2563EB',
+    color: colors.text,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
+  summary: {
+    fontSize: font.body,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
-  tabContainer: {
+  readAll: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-  tab: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    marginRight: 8,
-  },
-  tabActive: {
-    borderBottomColor: '#2563EB',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  tabTextActive: {
-    color: '#2563EB',
-  },
-  notificationsList: {
-    marginTop: 0,
-  },
-  emptyState: {
-    paddingVertical: 48,
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#6B7280',
+  readAllText: {
+    fontSize: font.small,
+    fontWeight: '700',
+    color: colors.primary,
   },
-  notificationItem: {
-    padding: 16,
-    borderRadius: 8,
+  chips: {
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  list: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    marginBottom: 12,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
-  notificationItemUnread: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
-  },
-  notificationContent: {
+  item: {
     flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+  itemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  itemUnread: {
+    backgroundColor: '#F8FAFF',
+  },
+  itemPressed: {
+    backgroundColor: colors.bg,
+  },
+  icon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
   },
-  notificationText: {
+  body: {
     flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
   },
-  notificationHeader: {
+  titleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 4,
+    gap: spacing.sm,
   },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+  title: {
     flex: 1,
-    marginRight: 8,
+    fontSize: font.body,
+    fontWeight: '500',
+    color: colors.textSecondary,
   },
-  unreadDot: {
+  titleUnread: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2563EB',
-    marginTop: 6,
+    backgroundColor: colors.primary,
+    marginTop: 5,
   },
-  notificationDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
-    lineHeight: 20,
+  message: {
+    fontSize: font.small,
+    lineHeight: 18,
+    color: colors.textMuted,
   },
-  notificationTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  preferencesCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  preferencesTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  preferencesSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
-  },
-  preferencesList: {
-    marginTop: 0,
-  },
-  preferenceItem: {
+  metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
   },
-  preferenceInfo: {
-    flex: 1,
-    marginRight: 16,
+  time: {
+    fontSize: font.caption,
+    color: colors.textFaint,
   },
-  preferenceLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  preferenceDescription: {
-    fontSize: 12,
-    color: '#6B7280',
+  link: {
+    fontSize: font.caption,
+    fontWeight: '700',
+    color: colors.primary,
   },
 })

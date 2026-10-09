@@ -86,6 +86,14 @@ export const supabase: SupabaseClient =
 
 if (!supabaseGlobal.__admissionTimesSupabaseClient) {
   supabaseGlobal.__admissionTimesSupabaseClient = supabase;
+
+  // Realtime must join channels with the user's JWT: notifications are only
+  // readable by their recipient (RLS), so an anon socket receives nothing.
+  const syncRealtimeAuth = (token: string | null | undefined) => {
+    supabase.realtime.setAuth(token ?? null);
+  };
+  supabase.auth.getSession().then(({ data }) => syncRealtimeAuth(data.session?.access_token)).catch(() => undefined);
+  supabase.auth.onAuthStateChange((_event, session) => syncRealtimeAuth(session?.access_token));
 }
 
 /**
@@ -138,6 +146,19 @@ export const getAccessToken = async (): Promise<string | null> => {
     return token;
   } catch (error: any) {
     console.error('❌ [Supabase] Error getting access token:', error);
+    return null;
+  }
+};
+
+/**
+ * Force a token refresh (used after a 401). Returns the new access token or null.
+ */
+export const refreshAccessToken = async (): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) return null;
+    return data.session?.access_token ?? null;
+  } catch {
     return null;
   }
 };

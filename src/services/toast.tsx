@@ -97,3 +97,14 @@ export const showAuthErrorToast = (title: string, message: string) => {
     autoHide: true,
   })
 }
+
+export const showErrorToast = (title: string, message: string) => {
+  Toast.show({
+    type: 'error',
+    position: 'top',
+    text1: title,
+    text2: message,
+    visibilityTime: 3800,
+    autoHide: true,
+  })
+}

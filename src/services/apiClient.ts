@@ -15,7 +15,7 @@
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { config } from '../config/env';
-import { getAccessToken, signOutUser } from './supabase';
+import { getAccessToken, refreshAccessToken, supabase } from './supabase';
 import { ApiError } from './types';
 
 const NETWORK_ERROR_LOG_THROTTLE_MS = 15000;
@@ -114,21 +114,22 @@ apiClient.interceptors.response.use(
       const apiError = error.response.data;
       const status = error.response.status;
 
-      // Handle 401 Unauthorized (JWT token expired/invalid)
+      // 401: the access token may simply have expired. Refresh once and
+      // retry; only if that fails is the session unusable.
       if (status === 401) {
-        console.error('❌ [API] Authentication failed (401 Unauthorized) - JWT token invalid or expired');
-        console.error('   Message:', apiError?.message || 'Unauthorized');
-
-        // Sign out user and clear session
-        try {
-          await signOutUser();
-          console.log('✅ [API] User signed out due to invalid token');
-        } catch (signOutError) {
-          console.error('❌ [API] Error during sign out:', signOutError);
+        const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+        if (original && !original._retried) {
+          original._retried = true;
+          const token = await refreshAccessToken();
+          if (token) {
+            original.headers['Authorization'] = `Bearer ${token}`;
+            return apiClient(original);
+          }
         }
 
-        // Note: Navigation to login screen will be handled by auth store listener
-
+        console.warn('⚠️ [API] Session rejected (401); signing out locally');
+        // Local sign-out fires SIGNED_OUT, which clears the auth store.
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
         return Promise.reject(error);
       }
 
