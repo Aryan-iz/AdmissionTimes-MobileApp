@@ -31,18 +31,6 @@ export function formatAiChatAnswer(data: AiChatResponse): string {
   return 'No response was generated. Please try again.'
 }
 
-export function appendResultsToAnswer(answer: string, data: AiChatResponse): string {
-  if (!data.results?.length) return answer
-  if (/\d+[\).]|here are|i found \d+/i.test(answer)) return answer
-
-  const lines = data.results.slice(0, 5).map((item, index) => {
-    const deadline = item.deadline ? new Date(item.deadline).toLocaleDateString() : 'Not specified'
-    return `${index + 1}. ${item.title}\n   ${item.degree_level || 'Degree N/A'} · ${item.location || 'Location N/A'} · Deadline: ${deadline}`
-  })
-
-  return [answer, 'Relevant programs:', ...lines].join('\n\n')
-}
-
 export function isRefusalReply(text: string): boolean {
   const lower = text.toLowerCase()
   return (

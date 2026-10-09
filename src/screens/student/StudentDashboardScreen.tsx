@@ -1,729 +1,325 @@
-import { useMemo, useEffect, useState } from 'react'
-import { ScrollView, Text, View, Pressable, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useEffect, useMemo } from 'react'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
+import { Feather } from '@expo/vector-icons'
 
-import type { RootStackParamList } from '../../navigation/AppNavigator.tsx'
+import type { RootStackParamList } from '../../navigation/types'
 import { useAuthStore, useStudentStore } from '../../store'
 import { useStudentDashboardData } from '../../hooks/useStudentDashboardData'
-import {
-  RECOMMENDATION_COUNT_LIMIT,
-  RECOMMENDATION_RENDER_LIMIT,
-  limitRecommendations,
-} from '../../utils/recommendationUtils'
-import {
-  resolveUpcomingDeadlineStat,
-  resolveUrgentDeadlineStat,
-  UPCOMING_DEADLINE_SIDEBAR_WINDOW_DAYS,
-  UPCOMING_DEADLINE_STAT_WINDOW_DAYS,
-} from '../../utils/studentStatsUtils'
-import { countUniqueSavedAdmissions } from '../../utils/watchlistUtils'
-import { isAdmissionActiveByPolicy } from '../../data/studentData'
-import { PremiumHeader, CustomLoader } from '../../components/ui'
-import { NewAdmissionSlider } from '../../components/student'
+import { isOpen } from '../../domain/admission'
+import { daysLeftLabel, formatShortDate } from '../../domain/dates'
+import { StudentScreen, Section, EmptyState, ErrorBanner, CustomLoader, Badge } from '../../components/ui'
+import AdmissionRow from '../../components/admission/AdmissionRow'
+import { deadlineTone } from '../../components/admission/AdmissionCard'
 import { useAi } from '../../contexts/AiContext'
-import { Feather } from '@expo/vector-icons'
-import { getUniversityById } from '../../services/universitiesService'
+import { colors, font, radius, spacing } from '../../theme'
+
+const CLOSING_SOON_DAYS = 7
+const SECTION_LIMIT = 3
+
+type StatCardProps = {
+  icon: keyof typeof Feather.glyphMap
+  label: string
+  value: number
+  hint: string
+  tone?: string
+  onPress: () => void
+}
+
+function StatCard({ icon, label, value, hint, tone = colors.primary, onPress }: StatCardProps) {
+  return (
+    <Pressable style={styles.stat} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`}>
+      <View style={styles.statHeader}>
+        <Feather name={icon} size={16} color={tone} />
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statHint} numberOfLines={1}>
+        {hint}
+      </Text>
+    </Pressable>
+  )
+}
 
 export default function StudentDashboardScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const admissions = useStudentStore(state => state.admissions)
-  const notifications = useStudentStore(state => state.notifications)
-  const dashboardStats = useStudentStore(state => state.stats)
-  const error = useStudentStore(state => state.error)
-  const user = useAuthStore(state => state.user)
-  const signOut = useAuthStore(state => state.signOut)
-  const { setContext } = useAi()
+  const user = useAuthStore((state) => state.user)
+  const admissions = useStudentStore((state) => state.admissions)
+  const recommendations = useStudentStore((state) => state.recommendations)
+  const notifications = useStudentStore((state) => state.notifications)
+  const stats = useStudentStore((state) => state.stats)
+  const error = useStudentStore((state) => state.error)
   const { loading, refetch } = useStudentDashboardData()
-
-  const displayName =
-    user?.name?.trim() ||
-    user?.display_name?.trim() ||
-    (user?.email ? user.email.split('@')[0] : 'Student')
+  const { setContext } = useAi()
 
   useEffect(() => {
     setContext('Student Dashboard')
   }, [setContext])
 
-  const stats = useMemo(() => {
-    const clientSaved = countUniqueSavedAdmissions(admissions.filter((a) => a.saved))
-    const clientActive = admissions.filter(isAdmissionActiveByPolicy).length
-    const clientUpcoming = resolveUpcomingDeadlineStat(admissions, dashboardStats?.upcoming_deadlines)
-    const clientUrgent = resolveUrgentDeadlineStat(admissions, dashboardStats?.urgent_deadlines)
-    const clientRecommendations = Math.min(RECOMMENDATION_COUNT_LIMIT, limitRecommendations(admissions).length)
+  const firstName = (user?.display_name?.trim() || user?.email?.split('@')[0] || 'there').split(/\s+/)[0]
+  const open = useMemo(() => admissions.filter(isOpen), [admissions])
+  // Admissions are sorted soonest-deadline first, so the first open ones close first.
+  const closingSoon = useMemo(
+    () => open.filter((a) => a.hasDeadline && a.daysRemaining <= CLOSING_SOON_DAYS),
+    [open]
+  )
+  const recentlyAdded = useMemo(
+    () => [...open].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, SECTION_LIMIT),
+    [open]
+  )
+  const openRecommendations = useMemo(() => recommendations.filter(isOpen).slice(0, SECTION_LIMIT), [recommendations])
+  const unread = notifications.filter((n) => !n.read).length
+  const savedCount = stats?.saved_count ?? admissions.filter((a) => a.saved).length
 
-    return {
-      active: dashboardStats?.active_admissions ?? clientActive,
-      saved: dashboardStats?.saved_count ?? clientSaved,
-      upcoming: clientUpcoming,
-      urgent: clientUrgent,
-      recommendations: dashboardStats?.recommendations_count
-        ? Math.min(RECOMMENDATION_COUNT_LIMIT, dashboardStats.recommendations_count)
-        : clientRecommendations,
-    }
-  }, [dashboardStats, admissions])
+  const openProgram = (id: string) => navigation.navigate('ProgramDetail', { id })
+  const goTab = (name: 'StudentSearch' | 'StudentDeadlines' | 'StudentWatchlist' | 'StudentNotifications') =>
+    navigation.reset({ index: 0, routes: [{ name }] })
 
-  const upcomingDeadlines = useMemo(() => {
-    return admissions
-      .filter(
-        (a) =>
-          a.programStatus !== 'Closed' &&
-          a.daysRemaining >= 0 &&
-          a.daysRemaining <= UPCOMING_DEADLINE_SIDEBAR_WINDOW_DAYS
-      )
-      .sort((a, b) => a.daysRemaining - b.daysRemaining)
-      .slice(0, 3)
-  }, [admissions])
-
-  const recommendedAdmissions = useMemo(() => limitRecommendations(admissions), [admissions])
-
-  const [resolvedUniversities, setResolvedUniversities] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    let mounted = true
-
-    const toResolve = recommendedAdmissions.filter((a) => {
-      const anyA = a as any
-      return !anyA.university_name && (anyA.university_id || anyA.universityId)
-    })
-
-    if (toResolve.length === 0) return
-
-    ;(async () => {
-      const results: Record<string, string> = {}
-      for (const admission of toResolve.slice(0, 10)) {
-        const anyA = admission as any
-        const uniId = anyA.university_id ?? anyA.universityId
-        if (!uniId) continue
-        try {
-          const uni = await getUniversityById(uniId)
-          if (uni && uni.name) {
-            results[admission.id] = uni.name
-          }
-        } catch (err) {
-          // ignore
-        }
-      }
-
-      if (mounted && Object.keys(results).length > 0) {
-        setResolvedUniversities((prev) => ({ ...prev, ...results }))
-      }
-    })()
-
-    return () => { mounted = false }
-  }, [recommendedAdmissions])
-
-  const recentActivities = useMemo(() => {
-    const activities: Array<{ action: string; time: string }> = []
-
-    // notifications already appear sorted newest-first in the context clone
-    notifications.slice(0, 2).forEach((n) => {
-      activities.push({ action: n.title, time: n.timeAgo })
-    })
-
-    const savedCount = countUniqueSavedAdmissions(admissions.filter((a) => a.saved))
-    if (savedCount > 0) {
-      activities.push({
-        action: `${savedCount} program${savedCount > 1 ? 's' : ''} saved to watchlist`,
-        time: 'Recently',
-      })
-    }
-
-    const activeAlerts = admissions.filter((a) => a.alertEnabled).length
-    if (activeAlerts > 0) {
-      activities.push({
-        action: `${activeAlerts} deadline reminder${activeAlerts > 1 ? 's' : ''} active`,
-        time: 'Recently',
-      })
-    }
-
-    return activities.slice(0, 3)
-  }, [notifications, admissions])
+  if (loading && admissions.length === 0) {
+    return (
+      <StudentScreen scroll={false}>
+        <View style={styles.loading}>
+          <CustomLoader size={56} color={colors.primary} />
+          <Text style={styles.loadingText}>Loading your dashboard…</Text>
+        </View>
+      </StudentScreen>
+    )
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }} edges={['bottom']}>
-      <PremiumHeader
-        userName={user?.name || user?.display_name || 'Student'}
-        userRole="Student"
-        notifications={notifications.filter(n => !n.read).length}
-        onNotificationPress={() => navigation.navigate('StudentNotifications')}
-        onLogout={signOut}
-      />
-      
-      {/* New Admission Slider - Fetches data from store automatically */}
-      {!loading && <NewAdmissionSlider />}
-      
-      {error && !loading ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>{error}</Text>
-          <Pressable style={styles.errorRetryButton} onPress={() => void refetch()}>
-            <Text style={styles.errorRetryText}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : null}
+    <StudentScreen refreshing={loading} onRefresh={() => void refetch()}>
+      {error ? <ErrorBanner message={error} onRetry={() => void refetch()} /> : null}
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <CustomLoader size={60} color="#2563EB" />
-          <Text style={styles.loadingText}>Loading your dashboard...</Text>
-        </View>
-      ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
-        {/* Hero Section */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>Welcome back, {displayName}!</Text>
-          <Text style={styles.heroSubtitle}>
-            Track your admission progress and discover new opportunities.
-          </Text>
-          <View style={styles.heroButtons}>
+      <View style={styles.hero}>
+        <Text style={styles.heroTitle}>Welcome back, {firstName}!</Text>
+        <Text style={styles.heroText}>Track deadlines and discover verified admissions.</Text>
+        <Pressable style={styles.heroButton} onPress={() => goTab('StudentSearch')} accessibilityRole="button" accessibilityLabel="Search admissions">
+          <Feather name="search" size={16} color={colors.primary} />
+          <Text style={styles.heroButtonText}>Search admissions</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.statsGrid}>
+        <StatCard icon="book-open" label="Open programs" value={open.length} hint="Accepting applications" onPress={() => goTab('StudentSearch')} />
+        <StatCard icon="bookmark" label="Saved" value={savedCount} hint="On your watchlist" onPress={() => goTab('StudentWatchlist')} />
+        <StatCard
+          icon="clock"
+          label="Closing this week"
+          value={closingSoon.length}
+          hint={`Within ${CLOSING_SOON_DAYS} days`}
+          tone={closingSoon.length > 0 ? colors.warning : colors.primary}
+          onPress={() => goTab('StudentDeadlines')}
+        />
+        <StatCard
+          icon="bell"
+          label="Unread alerts"
+          value={unread}
+          hint="Notifications"
+          tone={unread > 0 ? colors.danger : colors.primary}
+          onPress={() => goTab('StudentNotifications')}
+        />
+      </View>
+
+      <Section title="Recommended for you" actionLabel="Search" onAction={() => goTab('StudentSearch')}>
+        {openRecommendations.length === 0 ? (
+          <Text style={styles.muted}>Save a few programs and we will suggest similar ones.</Text>
+        ) : (
+          openRecommendations.map((admission) => (
+            <AdmissionRow
+              key={admission.id}
+              admission={admission}
+              onPress={() => openProgram(admission.id)}
+              // Scores under 60 are the engine's generic fallback; its reason adds nothing.
+              subtitle={
+                admission.matchReason && (admission.matchScore ?? 0) >= 60
+                  ? `${admission.university} · ${admission.matchReason}`
+                  : admission.university
+              }
+              trailing={admission.matchLabel ? <Badge label={admission.matchLabel} tone="primary" /> : null}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Closing soon" actionLabel="All deadlines" onAction={() => goTab('StudentDeadlines')}>
+        {closingSoon.length === 0 ? (
+          <Text style={styles.muted}>No deadlines in the next {CLOSING_SOON_DAYS} days.</Text>
+        ) : (
+          closingSoon.slice(0, SECTION_LIMIT).map((admission) => (
+            <AdmissionRow
+              key={admission.id}
+              admission={admission}
+              onPress={() => openProgram(admission.id)}
+              trailing={
+                <>
+                  <Text style={[styles.trailingStrong, { color: deadlineTone(admission) }]}>
+                    {daysLeftLabel(admission.daysRemaining, admission.hasDeadline)}
+                  </Text>
+                  <Text style={styles.trailingMuted}>{formatShortDate(admission.deadlineIso)}</Text>
+                </>
+              }
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Recently added" actionLabel="Search" onAction={() => goTab('StudentSearch')}>
+        {recentlyAdded.length === 0 ? (
+          <EmptyState icon="inbox" title="No open admissions right now" />
+        ) : (
+          recentlyAdded.map((admission) => (
+            <AdmissionRow
+              key={admission.id}
+              admission={admission}
+              onPress={() => openProgram(admission.id)}
+              trailing={<Text style={styles.trailingMuted}>{formatShortDate(admission.deadlineIso)}</Text>}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title="Latest notifications" actionLabel="View all" onAction={() => goTab('StudentNotifications')}>
+        {notifications.length === 0 ? (
+          <Text style={styles.muted}>You are all caught up.</Text>
+        ) : (
+          notifications.slice(0, SECTION_LIMIT).map((notification) => (
             <Pressable
-              style={styles.heroPrimaryButton}
-              onPress={() => navigation.navigate('StudentSearch')}
+              key={notification.id}
+              style={styles.notification}
+              onPress={() => (notification.admissionId ? openProgram(notification.admissionId) : goTab('StudentNotifications'))}
+              accessibilityRole="button"
             >
-              <View style={styles.heroButtonContent}>
-                <Feather name="search" size={14} color="#2563EB" />
-                <Text style={styles.heroPrimaryButtonText}>Search Admissions</Text>
+              <View style={[styles.unreadDot, notification.read && styles.readDot]} />
+              <View style={styles.notificationBody}>
+                <Text style={styles.notificationTitle} numberOfLines={2}>
+                  {notification.title}
+                </Text>
+                <Text style={styles.trailingMuted}>{notification.timeAgo}</Text>
               </View>
             </Pressable>
-            <Pressable
-              style={styles.heroSecondaryButton}
-              onPress={() => navigation.navigate('StudentDeadlines')}
-            >
-              <View style={styles.heroButtonContent}>
-                <Feather name="calendar" size={14} color="#FFFFFF" />
-                <Text style={styles.heroSecondaryButtonText}>View Deadlines</Text>
-              </View>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Stats Cards Grid */}
-        <View style={styles.statsGrid}>
-          <Pressable 
-            style={styles.statsCard}
-            onPress={() => navigation.navigate('StudentSearch')}
-          >
-            <View style={[styles.statsIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Feather name="book-open" size={18} color="#2563EB" />
-            </View>
-            <Text style={styles.statsLabel}> Active Applications</Text>
-            <Text style={styles.statsValue}>{stats.active}</Text>
-            <Text style={styles.statsSubtext}>Open & Closing Soon</Text>
-          </Pressable>
-
-          <Pressable 
-            style={styles.statsCard}
-            onPress={() => navigation.navigate('StudentSearch')}
-          >
-            <View style={[styles.statsIcon, { backgroundColor: '#DBEAFE' }]}>
-              <Feather name="star" size={18} color="#2563EB" />
-            </View>
-            <Text style={styles.statsLabel}>Recommendations</Text>
-            <Text style={styles.statsValue}>{stats.recommendations}</Text>
-            <Text style={styles.statsSubtext}>Matched programs</Text>
-          </Pressable>
-
-          <Pressable 
-            style={styles.statsCard}
-            onPress={() => navigation.navigate('StudentWatchlist')}
-          >
-            <View style={[styles.statsIcon, { backgroundColor: '#E0E7FF' }]}>
-              <Feather name="bookmark" size={18} color="#2563EB" />
-            </View>
-            <Text style={styles.statsLabel}>Saved Programs</Text>
-            <Text style={styles.statsValue}>{stats.saved}</Text>
-            <Text style={styles.statsSubtext}>View watchlist</Text>
-          </Pressable>
-
-          <Pressable 
-            style={styles.statsCard}
-            onPress={() => navigation.navigate('StudentDeadlines')}
-          >
-            <View style={[styles.statsIcon, { backgroundColor: stats.urgent > 0 ? '#FEE2E2' : '#FEF3C7' }]}>
-              <Feather name="calendar" size={18} color={stats.urgent > 0 ? '#EF4444' : '#B45309'} />
-            </View>
-            <Text style={styles.statsLabel}>Upcoming Deadlines</Text>
-            <Text style={styles.statsValue}>{stats.upcoming}</Text>
-            <Text style={[styles.statsSubtext, { color: stats.urgent > 0 ? '#EF4444' : '#6B7280' }]}>
-              {stats.urgent > 0
-                ? `${stats.urgent} urgent`
-                : `Closing within ${UPCOMING_DEADLINE_STAT_WINDOW_DAYS} days`}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Main Content - Quick Access Sections */}
-        <View style={styles.mainGrid}>
-          {/* Quick Access Sections */}
-          <View style={styles.sidebarColumn}>
-            {/* Recommendations Card */}
-            <View style={styles.sidebarCard}>
-              <View style={styles.sidebarCardHeader}>
-                <Text style={styles.sidebarCardTitle}>Recommendations</Text>
-                <Pressable onPress={() => navigation.navigate('StudentSearch')}>
-                  <Text style={styles.viewAllText}>View All</Text>
-                </Pressable>
-              </View>
-              <View style={styles.deadlinesList}>
-                {recommendedAdmissions.length === 0 ? (
-                  <Text style={styles.mutedText}>No recommendations available</Text>
-                ) : (
-                  recommendedAdmissions.slice(0, RECOMMENDATION_RENDER_LIMIT).map((admission) => {
-                    const match = Math.round(admission.matchNumeric || 0)
-                    // Prefer enriched recommendation fields when available
-                    const rawUni = String(resolvedUniversities[admission.id] || (admission as any).university_name || admission.university || '')
-                    // Normalize university name: strip generic 'unknown' tokens
-                    const normalizedUni = rawUni.replace(/unknown/ig, '').trim()
-                    const place = [ (admission as any).university_city, admission.city, admission.location ]
-                      .filter(Boolean)
-                      .join(', ')
-
-                    const title = normalizedUni.length > 0
-                      ? normalizedUni
-                      : (place || ((admission as any).university_id ? `University ${ (admission as any).university_id }` : 'University'))
-
-                    return (
-                      <Pressable
-                        key={admission.id}
-                        style={styles.recommendationItem}
-                        onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
-                      >
-                        <View style={styles.recommendationBadge}>
-                          <Text style={styles.recommendationBadgeText}>{match}%</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.deadlineUniversity} numberOfLines={1}>{title}</Text>
-                          <Text style={styles.deadlineProgram} numberOfLines={1}>{admission.program}</Text>
-                          {place ? <Text style={styles.recommendationPlace} numberOfLines={1}>{place}</Text> : null}
-                        </View>
-                      </Pressable>
-                    )
-                  })
-                )}
-              </View>
-            </View>
-
-            {/* Upcoming Deadlines Card */}
-            <View style={styles.sidebarCard}>
-              <View style={styles.sidebarCardHeader}>
-                <Text style={styles.sidebarCardTitle}>Upcoming Deadlines</Text>
-                <Pressable onPress={() => navigation.navigate('StudentDeadlines')}>
-                  <Text style={styles.viewAllText}>View All</Text>
-                </Pressable>
-              </View>
-              <View style={styles.deadlinesList}>
-                {upcomingDeadlines.length === 0 ? (
-                  <Text style={styles.mutedText}>No upcoming deadlines</Text>
-                ) : (
-                  upcomingDeadlines.map((admission) => {
-                    const days = admission.daysRemaining
-                    const color = days <= 3 ? '#EF4444' : days <= 7 ? '#F59E0B' : '#10B981'
-                    const bgColor = days <= 3 ? '#FEE2E2' : days <= 7 ? '#FEF3C7' : '#D1FAE5'
-                    const daysLabel =
-                      days <= 0 ? 'Today'
-                      : days === 1 ? 'Tomorrow'
-                      : `${days}d left`
-                    const shortDate = admission.deadlineDisplay
-                    return (
-                      <View key={admission.id} style={styles.deadlineItem}>
-                        <View style={[styles.deadlineDot, { backgroundColor: color }]} />
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.deadlineUniversity} numberOfLines={1}>{admission.university}</Text>
-                          <Text style={styles.deadlineProgram} numberOfLines={1}>{admission.program}</Text>
-                        </View>
-                        <View style={styles.deadlineBadge}>
-                          <Text style={[styles.deadlineBadgeDate, { color }]}>{shortDate}</Text>
-                          <View style={[styles.deadlineBadgePill, { backgroundColor: bgColor }]}>
-                            <Text style={[styles.deadlineBadgePillText, { color }]}>{daysLabel}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    )
-                  })
-                )}
-              </View>
-            </View>
-
-            {/* Recent Activity Card */}
-            <View style={styles.sidebarCard}>
-              <View style={styles.sidebarCardHeader}>
-                <Text style={styles.sidebarCardTitle}>Recent Activity</Text>
-                <Pressable onPress={() => navigation.navigate('StudentNotifications')}>
-                  <Text style={styles.viewAllText}>View All</Text>
-                </Pressable>
-              </View>
-              <View style={styles.activityList}>
-                {recentActivities.length === 0 ? (
-                  <Text style={styles.mutedText}>No recent activity</Text>
-                ) : (
-                  recentActivities.map((activity, idx) => (
-                    <View key={idx} style={styles.activityItem}>
-                      <View style={styles.activityIcon}>
-                        <Feather name="bell" size={14} color="#2563EB" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.activityText}>{activity.action}</Text>
-                        <Text style={styles.activityTime}>{activity.time}</Text>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </View>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-      )}
-    </SafeAreaView>
+          ))
+        )}
+      </Section>
+    </StudentScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  loading: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
+    gap: spacing.md,
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: font.body,
+    color: colors.textMuted,
   },
-  errorBanner: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  errorBannerText: {
-    fontSize: 13,
-    color: '#991B1B',
-    marginBottom: 8,
-  },
-  errorRetryButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#EF4444',
-    borderRadius: 6,
-  },
-  errorRetryText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  container: {
-    padding: 16,
-  },
-  heroCard: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 24,
-  },
-  mainGrid: {
-    marginBottom: 24,
+  hero: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   heroTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: font.display,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
   },
-  heroSubtitle: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    opacity: 0.9,
-    marginBottom: 24,
+  heroText: {
+    fontSize: font.body,
+    color: '#DBEAFE',
   },
-  heroButtons: {
-    flexDirection: 'row',
-    marginHorizontal: -6,
-  },
-  heroButtonContent: {
+  heroButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  heroPrimaryButton: {
-    flex: 1,
+    alignSelf: 'flex-start',
+    gap: spacing.sm,
     backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 6,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
   },
-  heroPrimaryButtonText: {
-    color: '#2563EB',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  heroSecondaryButton: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 6,
-  },
-  heroSecondaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
+  heroButtonText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: font.body,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 12,
+    rowGap: spacing.md,
+    marginBottom: spacing.lg,
   },
-  statsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    width: '48%',
+  stat: {
+    width: '48.5%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.xs,
   },
-  statsIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+  statHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    gap: spacing.sm,
   },
-  statsLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  statsValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  statsSubtext: {
-    fontSize: 12,
-    color: '#10B981',
-  },
-  mainColumn: {
+  statLabel: {
     flex: 1,
-    marginBottom: 24,
+    fontSize: font.small,
+    color: colors.textMuted,
+    fontWeight: '500',
   },
-  sidebarColumn: {
-    marginBottom: 24,
+  statValue: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.text,
   },
-  sectionHeader: {
-    marginBottom: 16,
+  statHint: {
+    fontSize: font.caption,
+    color: colors.textFaint,
   },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
+  muted: {
+    fontSize: font.body,
+    color: colors.textMuted,
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+  trailingStrong: {
+    fontSize: font.small,
+    fontWeight: '700',
   },
-  programsGrid: {
-    marginHorizontal: -6,
+  trailingMuted: {
+    fontSize: font.small,
+    color: colors.textMuted,
   },
-  programCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flex: 1,
-    minWidth: '100%',
-    marginHorizontal: 6,
-    marginBottom: 12,
-  },
-  programCardHeader: {
+  notification: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  programTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  programUniversity: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  matchBadge: {
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  matchBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#10B981',
-  },
-  programCardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  deadlineText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  sidebarCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  sidebarCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sidebarCardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2563EB',
-  },
-  deadlinesList: {
-  },
-  deadlineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-    gap: 8,
-  },
-  deadlineDot: {
+  unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    flexShrink: 0,
+    backgroundColor: colors.primary,
+    marginTop: 6,
   },
-  deadlineUniversity: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 1,
+  readDot: {
+    backgroundColor: colors.border,
   },
-  deadlineProgram: {
-    fontSize: 11,
-    color: '#6B7280',
+  notificationBody: {
+    flex: 1,
+    gap: 2,
   },
-  deadlineBadge: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-  },
-  deadlineBadgeDate: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 3,
-  },
-  deadlineBadgePill: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  deadlineBadgePillText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  activityList: {
-  },
-  recommendationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  recommendationBadge: {
-    minWidth: 42,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#DBEAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  recommendationBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1D4ED8',
-  },
-  recommendationPlace: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E0E7FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  activityText: {
-    fontSize: 14,
-    color: '#111827',
-    marginBottom: 2,
-  },
-  activityTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  mutedText: {
-    fontSize: 14,
-    color: '#6B7280',
+  notificationTitle: {
+    fontSize: font.body,
+    color: colors.text,
+    fontWeight: '500',
   },
 })

@@ -66,92 +66,69 @@ export interface User {
 }
 
 /**
- * Admission/Program entity
- * Represents a university admission program
+ * Admission as returned by the API (GET /admissions, /admissions/:id, dashboard).
+ *
+ * Raw columns plus the backend "contract" fields (contract_version >= 3), which
+ * are display-ready and identical for web and mobile. Render the contract fields;
+ * do not re-derive them in the app.
  */
 export interface Admission {
   id: string;
+  university_id?: string | null;
   title: string;
-  source_admission_id?: string | null;
-  parent_admission_id?: string | null;
   description?: string | null;
-  field_of_study?: string | null;
-  location?: string | null;
-  city?: string | null;
-  campus?: string | null;
-  source_location?: string | null;
-  delivery_mode?: 'On-campus' | 'Online' | 'Hybrid' | null;
-  degree_level?: string | null;
-  degree_label?: string | null;
-  degree_type?: string | null;
   program_type?: string | null;
+  degree_level?: string | null;
+  field_of_study?: string | null;
   duration?: string | null;
-  tuition_fee?: number | null;
-  application_fee?: number | null;
-  fee_amount?: number | null;
-  fee_display?: string | null;
+  tuition_fee?: number | string | null;
+  application_fee?: number | string | null;
   currency?: string | null;
   deadline?: string | null;
-  deadline_iso?: string | null;
   start_date?: string | null;
-  days_remaining?: number;
-  program_status?: 'Open' | 'Closing Soon' | 'Closed' | null;
-  contract_version?: number;
-  source_url?: string | null;
-  source_details_link?: string | null;
-  primary_apply_url?: string | null;
-  university_website_url?: string | null;
-  admission_portal_url?: string | null;
-  source_system?: string | null;
-  data_origin?: string | null;
-  requirements?: {
-    eligibility?: string;
-    documents?: string[];
-    highlights?: string[];
-    importantDates?: Record<string, string>;
-    feeStructure?: Record<string, any>;
-    officialLinks?: string[];
-    websiteUrl?: string;
-    admissionPortalLink?: string;
-    links?: {
-      officialLinks?: string[];
-      websiteUrl?: string;
-      admissionPortalLink?: string;
-      officialWebsite?: string;
-      portalUrl?: string;
-      source_details_link?: string;
-      location?: string;
-    };
-    source_details_link?: string;
-    source_location?: string;
-    location?: string;
-    campus?: string;
-    city?: string;
-    fee?: string;
-    fee_display?: string;
-    application_fee?: string;
-    programs_offered_count?: number;
-  } | null;
-  eligibility?: string | null;
+  location?: string | null;
+  delivery_mode?: string | null;
+  requirements?: Record<string, unknown> | null;
   verification_status: 'draft' | 'pending' | 'verified' | 'rejected';
-  verified_at?: string | null;
-  verified_by?: string | null;
-  rejection_reason?: string | null;
-  created_by?: string | null;
+  data_origin?: string | null;
+  source_url?: string | null;
   created_at: string;
   updated_at: string;
   is_active?: boolean;
-  university_id?: string | null;
-  university_name?: string | null; // Included in joined queries
+
+  // Joined from universities
+  university_name?: string | null;
   university_logo_url?: string | null;
   university_city?: string | null;
   university_country?: string | null;
-  universities?: University | null;
-  // Additional fields for dashboard responses
-  saved?: boolean; // Indicates if user has saved/watchlisted this admission
-  alert_enabled?: boolean; // Indicates if user has enabled alerts for this admission
-  match_score?: number; // Recommendation match score
-  match_reason?: string; // Reason for recommendation
+  university_website?: string | null;
+
+  // Contract fields (backend shared/utils/admissionContract.ts)
+  contract_version?: number;
+  source?: 'university' | 'scraper';
+  degree_label?: string;
+  degree_type?: string;
+  deadline_iso?: string | null;
+  has_deadline?: boolean;
+  days_remaining?: number;
+  program_status?: 'Open' | 'Closing Soon' | 'Closed';
+  fee_amount?: number | null;
+  fee_display?: string;
+  location_display?: string | null;
+  eligibility_text?: string | null;
+  university_website_url?: string | null;
+  admission_portal_url?: string | null;
+  source_announcement_url?: string | null;
+  primary_apply_url?: string | null;
+  programs_offered?: string[];
+  status_label?: 'Verified' | 'Pending' | 'Closed' | 'Draft';
+
+  // Per-student fields (dashboard / recommendations)
+  saved?: boolean;
+  alert_enabled?: boolean;
+  match_score?: number;
+  match_reason?: string;
+  match_label?: string;
 }
 
 /**
@@ -181,16 +158,17 @@ export interface Watchlist {
 }
 
 /**
- * Notification entity
+ * Notification entity (GET /notifications)
  */
 export interface Notification {
   id: string;
-  user_type: 'student' | 'university' | 'admin';
-  category: 'verification' | 'deadline' | 'system' | 'update';
+  recipient_id?: string;
+  role_type: 'student' | 'university' | 'admin';
+  notification_type: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   title: string;
   message: string;
-  related_entity_type?: 'admission' | 'deadline' | 'user' | null;
+  related_entity_type?: string | null;
   related_entity_id?: string | null;
   is_read: boolean;
   read_at?: string | null;
@@ -268,13 +246,12 @@ export interface AuthResponse {
 /**
  * Sign up data
  */
+/** Profile creation after Supabase signup (POST /auth/signup). Students only. */
 export interface SignUpData {
   email: string;
-  password: string;
-  user_type: 'student' | 'university' | 'admin';
+  user_type: 'student';
   display_name?: string;
-  university_id?: string;
-  auth_user_id?: string;
+  auth_user_id: string;
 }
 
 /**

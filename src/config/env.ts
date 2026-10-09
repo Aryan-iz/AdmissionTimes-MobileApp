@@ -140,6 +140,12 @@ const resolveDefaultApiBaseUrl = (): string => {
   return 'http://localhost:3000/api/v1';
 };
 
+// Release builds have no Metro host to derive the API from; API_BASE_URL
+// (app.json "extra" or an EAS env) must point at the deployed backend.
+if (!__DEV__ && !getOptionalEnvVar('API_BASE_URL')) {
+  console.error('❌ [Config] API_BASE_URL is not set for this release build; API calls will fail.');
+}
+
 export const config: Config = {
   apiBaseUrl: getValidatedApiBaseUrl() || resolveDefaultApiBaseUrl(),
   supabaseUrl: getEnvVar('SUPABASE_URL', 'https://lufhgsgubvxjrrcsevte.supabase.co'),

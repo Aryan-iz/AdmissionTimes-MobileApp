@@ -293,12 +293,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       const { data: signUpResult, error: supabaseError } = await supabase.auth.signUp({
         email,
         password,
+        // Role is not sent as metadata: the backend assigns it (students only
+        // via self-signup) and ignores token metadata for authorization.
         options: {
-          data: {
-            role: data.user_type,
-            university_id: data.university_id || null,
-            display_name: data.display_name || null,
-          },
+          data: { display_name: data.display_name?.trim() || null },
         },
       })
 
@@ -316,8 +314,11 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
 
       // Create user in database  
       try {
+        // Credentials live in Supabase Auth only; never send the password here.
         await authService.signUp({
-          ...data,
+          email,
+          display_name: data.display_name?.trim() || undefined,
+          user_type: 'student',
           auth_user_id: authUserId,
         })
         console.log('✅ [authStore] User created in database')

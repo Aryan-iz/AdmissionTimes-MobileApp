@@ -4,8 +4,9 @@ import type { AxiosError } from 'axios'
 import { useAi } from '../../contexts/AiContext'
 import { useAuthStore } from '../../store'
 import aiService, { type AiChatResponse } from '../../services/aiService'
+import { navigationRef } from '../../navigation/navigationRef'
+import { formatShortDate } from '../../domain/dates'
 import {
-  appendResultsToAnswer,
   buildGuidanceResponse,
   buildHistoryFromModalMessages,
   formatAiChatAnswer,
@@ -22,7 +23,11 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  /** Programs the assistant found; shown as tappable links to the program page. */
+  results?: AiChatResponse['results']
 }
+
+const MAX_RESULT_LINKS = 5
 
 export default function ChatModal() {
   const { isOpen, closeChat, context } = useAi()
@@ -112,14 +117,14 @@ export default function ChatModal() {
       setAvailability('online')
 
       const formatted = formatAiChatAnswer(response.data)
-      const withResults = appendResultsToAnswer(formatted, response.data)
-      const finalText = resolveAssistantReply(userText, withResults, response.data)
+      const finalText = resolveAssistantReply(userText, formatted, response.data)
 
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: finalText,
         timestamp: new Date(),
+        results: (response.data.results || []).slice(0, MAX_RESULT_LINKS),
       }
 
       setMessages((prev) => [...prev, aiResponse])
@@ -135,6 +140,11 @@ export default function ChatModal() {
     } finally {
       setIsTyping(false)
     }
+  }
+
+  const openProgram = (id: string) => {
+    closeChat()
+    if (navigationRef.isReady()) navigationRef.navigate('ProgramDetail', { id })
   }
 
   const handleQuickAction = (action: string) => {
@@ -236,6 +246,28 @@ export default function ChatModal() {
                   <Text style={[styles.messageText, message.role === 'user' ? styles.userMessageText : styles.aiMessageText]}>
                     {message.content}
                   </Text>
+                  {message.results && message.results.length > 0 ? (
+                    <View style={styles.resultList}>
+                      {message.results.map((result) => (
+                        <Pressable
+                          key={result.id}
+                          style={styles.resultLink}
+                          onPress={() => openProgram(result.id)}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Open ${result.title}`}
+                        >
+                          <Text style={styles.resultTitle} numberOfLines={2}>
+                            {result.title}
+                          </Text>
+                          <Text style={styles.resultMeta} numberOfLines={1}>
+                            {[result.degree_level, result.location, result.deadline ? `Deadline ${formatShortDate(result.deadline)}` : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
                   <Text style={[styles.timestamp, message.role === 'user' ? styles.userTimestamp : styles.aiTimestamp]}>
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
@@ -275,6 +307,8 @@ export default function ChatModal() {
                 void handleSend()
               }}
               disabled={!inputText.trim() || isTyping}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
             >
               <Text style={styles.sendIcon}>➤</Text>
             </Pressable>
@@ -286,6 +320,28 @@ export default function ChatModal() {
 }
 
 const styles = StyleSheet.create({
+  resultList: {
+    marginTop: 8,
+    gap: 6,
+  },
+  resultLink: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  resultTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
+  resultMeta: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

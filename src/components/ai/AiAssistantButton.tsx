@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Animated, Text } from 'react-native'
 import { useAi } from '../../contexts/AiContext'
 import { useEffect, useRef } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { TAB_BAR_HEIGHT } from '../navigation/StudentTabBar'
 
 export default function AiAssistantButton() {
   const { isOpen, toggleChat } = useAi()
@@ -23,11 +24,17 @@ export default function AiAssistantButton() {
         styles.container,
         {
           transform: [{ scale: scaleAnim }],
-          bottom: insets.bottom + 24,
+          // Sits above the tab bar; screens reserve FLOATING_BUTTON_CLEARANCE at the bottom.
+          bottom: insets.bottom + TAB_BAR_HEIGHT + 12,
         },
       ]}
     >
-      <Pressable style={styles.button} onPress={toggleChat}>
+      <Pressable
+        style={styles.button}
+        onPress={toggleChat}
+        accessibilityRole="button"
+        accessibilityLabel={isOpen ? 'Close AI assistant' : 'Open AI assistant'}
+      >
         <Text style={styles.icon}>{isOpen ? '✕' : '💬'}</Text>
       </Pressable>
     </Animated.View>
@@ -37,7 +44,7 @@ export default function AiAssistantButton() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    right: 24,
+    right: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,

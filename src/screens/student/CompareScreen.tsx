@@ -1,421 +1,325 @@
-import { useMemo, useState, useEffect } from 'react'
-import { ScrollView, View, Text, Pressable, StyleSheet, Linking } from 'react-native'
-import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
-import { StackNavigationProp } from '@react-navigation/stack'
-import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useStudentStore, selectSavedAdmissions } from '../../store'
-import { dedupeSavedAdmissions } from '../../utils/watchlistUtils'
-import { getStatusColor, StudentAdmission } from '../../data/studentData'
-import { TitleHeader, CustomLoader } from '../../components/ui'
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native'
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
+import type { StackNavigationProp } from '@react-navigation/stack'
 import { Feather } from '@expo/vector-icons'
 
-type CompareScreenRouteProp = RouteProp<RootStackParamList, 'StudentCompare'>
-type CompareScreenNavigationProp = StackNavigationProp<RootStackParamList, 'StudentCompare'>
+import type { RootStackParamList } from '../../navigation/types'
+import { useStudentStore, useSavedAdmissions } from '../../store'
+import { isOpen, SOURCE_LABEL, type StudentAdmission } from '../../domain/admission'
+import { daysLeftLabel } from '../../domain/dates'
+import { aiService, type AiCompareResponse } from '../../services/aiService'
+import { trackCappedStudentActivitySafe } from '../../services'
+import { StudentScreen, Section, CustomLoader, Badge } from '../../components/ui'
+import AdmissionRow from '../../components/admission/AdmissionRow'
+import UniversityAvatar from '../../components/admission/UniversityAvatar'
+import { colors, font, radius, spacing } from '../../theme'
 
-// Helper function to convert match percentage to text label
-function getMatchLabel(matchNumeric?: number): string {
-  if (!matchNumeric) return 'Match'
-  if (matchNumeric >= 90) return 'Excellent Match'
-  if (matchNumeric >= 85) return 'High Match'
-  if (matchNumeric >= 80) return 'Good Match'
-  if (matchNumeric >= 75) return 'Fair Match'
-  return 'Match'
-}
+const MAX_COMPARE = 4
+const COLUMN_WIDTH = 168
+const LABEL_WIDTH = 104
 
-const CompareCard = ({ admission, onViewDetails }: { admission: StudentAdmission; onViewDetails: () => void }) => {
-  const statusColors = getStatusColor(admission.status)
+type CompareRoute = RouteProp<RootStackParamList, 'StudentCompare'>
 
-  const handleViewOriginal = () => {
-    if (admission.officialUrl) {
-      Linking.openURL(admission.officialUrl)
-    } else {
-      onViewDetails()
-    }
-  }
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleContainer}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{admission.university}</Text>
-          <Text style={styles.cardSubtitle} numberOfLines={1}>{admission.program}</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
-          <Text style={[styles.badgeText, { color: statusColors.text }]}>{admission.programStatus}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardDetails}>
-        <View style={styles.detailRow}>
-          <Feather name="book-open" size={16} color="#6B7280" style={styles.detailIcon} />
-          <Text style={styles.detailText} numberOfLines={1}>{admission.degree}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Feather name="calendar" size={16} color="#6B7280" style={styles.detailIcon} />
-          <Text style={styles.detailText}>{admission.deadlineDisplay}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Feather name="map-pin" size={16} color="#6B7280" style={styles.detailIcon} />
-          <Text style={styles.detailText} numberOfLines={1}>{admission.location}</Text>
-        </View>
-      </View>
-
-      <View style={styles.summaryContainer}>
-        <Text style={styles.summaryLabel}>AI Summary</Text>
-        <Text style={styles.summaryText} numberOfLines={5}>
-          {admission.aiSummary || 'No summary available.'}
-        </Text>
-      </View>
-
-      <Pressable onPress={handleViewOriginal}>
-        <View style={styles.viewLinkRow}>
-          <Text style={styles.viewLink}>View Original Admission</Text>
-          <Feather name="arrow-right" size={14} color="#2563EB" />
-        </View>
-      </Pressable>
-    </View>
-  )
-}
+const ROWS: Array<{ label: string; value: (a: StudentAdmission) => string }> = [
+  { label: 'Status', value: (a) => a.programStatus },
+  { label: 'Deadline', value: (a) => a.deadlineDisplay },
+  { label: 'Time left', value: (a) => daysLeftLabel(a.daysRemaining, a.hasDeadline) },
+  { label: 'Degree', value: (a) => a.degree ?? 'Not specified' },
+  { label: 'Fee', value: (a) => a.fee },
+  { label: 'Location', value: (a) => a.location ?? 'Not specified' },
+  { label: 'Study mode', value: (a) => a.deliveryMode ?? 'Not specified' },
+  { label: 'Duration', value: (a) => a.duration ?? 'Not specified' },
+  { label: 'Source', value: (a) => SOURCE_LABEL[a.source] },
+]
 
 export default function CompareScreen() {
-  const route = useRoute<CompareScreenRouteProp>()
-  const navigation = useNavigation<CompareScreenNavigationProp>()
-  const admissions = useStudentStore(state => state.admissions)
-  const savedAdmissions = useStudentStore(selectSavedAdmissions)
-  const dedupedSaved = useMemo(() => dedupeSavedAdmissions(savedAdmissions), [savedAdmissions])
-  const [isLoading, setIsLoading] = useState(true)
-  
-  const getAdmissionById = (id: string) => admissions.find(a => a.id === id)
+  const route = useRoute<CompareRoute>()
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
+  const admissions = useStudentStore((state) => state.admissions)
+  const ensureAdmission = useStudentStore((state) => state.ensureAdmission)
+  const saved = useSavedAdmissions()
 
+  const [ids, setIds] = useState<string[]>(() => (route.params?.ids ?? []).slice(0, MAX_COMPARE))
+  const [loading, setLoading] = useState(true)
+  const [ai, setAi] = useState<AiCompareResponse | null>(null)
+  const [aiState, setAiState] = useState<'idle' | 'loading' | 'error'>('idle')
+
+  // Programs opened from search may not be in the store yet.
+  const idsKey = ids.join(',')
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 700)
-    return () => clearTimeout(timer)
-  }, [])
-  
-  const selectedAdmissions = useMemo(() => {
-    const ids = route.params?.ids
-    if (ids && Array.isArray(ids)) {
-      return ids
-        .map((id: string) => getAdmissionById(id))
-        .filter((a): a is StudentAdmission => a !== undefined)
+    let cancelled = false
+    setLoading(true)
+    Promise.all(ids.map((id) => ensureAdmission(id))).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => {
+      cancelled = true
     }
-    // Default: use first 3 saved admissions
-    return dedupedSaved.slice(0, 4)
-  }, [route.params?.ids, admissions, dedupedSaved])
+    // ids is represented by idsKey
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, ensureAdmission])
 
-  const highlights = useMemo(() => {
-    if (selectedAdmissions.length === 0) return []
-    
-    const lowestFee = selectedAdmissions.reduce((min: StudentAdmission, a: StudentAdmission) => a.feeNumeric < min.feeNumeric ? a : min, selectedAdmissions[0])
-    const earliestDeadline = selectedAdmissions.reduce((earliest: StudentAdmission, a: StudentAdmission) => {
-      const daysA = a.daysRemaining
-      const daysB = earliest.daysRemaining
-      return daysA < daysB ? a : earliest
-    }, selectedAdmissions[0])
-    const highestMatch = selectedAdmissions.reduce((max: StudentAdmission, a: StudentAdmission) => (a.matchNumeric || 0) > (max.matchNumeric || 0) ? a : max, selectedAdmissions[0])
-    
-    return [
-      `${lowestFee.university} offers the lowest fee at ${lowestFee.fee}, making it the most cost-effective option.`,
-      `${earliestDeadline.university} has the earliest deadline (${earliestDeadline.deadlineDisplay}), requiring immediate application submission.`,
-      `${highestMatch.university} provides the best match (${getMatchLabel(highestMatch.matchNumeric)}) based on your profile.`,
-      `All ${selectedAdmissions.length} universities are located in major cities with excellent infrastructure and facilities.`,
-    ]
-  }, [selectedAdmissions])
+  const selected = useMemo(
+    () => ids.map((id) => admissions.find((a) => a.id === id)).filter((a): a is StudentAdmission => Boolean(a)),
+    [ids, admissions]
+  )
 
-  const count = selectedAdmissions.length
+  // Suggestions to add: saved programs first, then other open programs.
+  const candidates = useMemo(() => {
+    const pool = [...saved, ...admissions.filter(isOpen)]
+    const seen = new Set(ids)
+    return pool.filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true))).slice(0, 8)
+  }, [saved, admissions, ids])
 
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <TitleHeader title="Compare Admissions" />
-        <View style={styles.loadingContainer}>
-          <CustomLoader size={60} color="#2563EB" />
-          <Text style={styles.loadingText}>Loading comparison...</Text>
-        </View>
-      </View>
-    )
+  // A new selection invalidates the previous AI comparison.
+  useEffect(() => {
+    setAi(null)
+    setAiState('idle')
+  }, [idsKey])
+
+  const add = (id: string) => setIds((prev) => (prev.length >= MAX_COMPARE || prev.includes(id) ? prev : [...prev, id]))
+  const remove = (id: string) => setIds((prev) => prev.filter((x) => x !== id))
+
+  const runAiCompare = async () => {
+    setAiState('loading')
+    try {
+      const response = await aiService.compare(selected.map((a) => a.id))
+      setAi(response.data)
+      setAiState('idle')
+      void trackCappedStudentActivitySafe({
+        activity_type: 'compared',
+        entity_type: 'admission',
+        entity_id: selected[0].id,
+        metadata: { source: 'mobile_compare', admission_ids: selected.map((a) => a.id) },
+      })
+    } catch {
+      setAiState('error')
+    }
   }
 
-  if (count < 2) {
+  if (loading) {
     return (
-      <View style={styles.container}>
-        <TitleHeader title="Compare Admissions" />
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyCard}>
-            <Feather name="file-text" size={56} color="#9CA3AF" style={styles.emptyIcon} />
-            <Text style={styles.emptyTitle}>Not Enough Admissions Selected</Text>
-            <Text style={styles.emptyMessage}>Please select at least 2 admissions to compare.</Text>
-            <Pressable 
-              style={styles.emptyButton}
-              onPress={() => navigation.navigate('StudentWatchlist')}
-            >
-              <Text style={styles.emptyButtonText}>Go to Watchlist</Text>
-            </Pressable>
-          </View>
+      <StudentScreen title="Compare Programs" scroll={false}>
+        <View style={styles.center}>
+          <CustomLoader size={48} color={colors.primary} />
         </View>
-      </View>
-    )
-  }
-
-  if (count > 4) {
-    return (
-      <View style={styles.container}>
-        <TitleHeader title="Compare Admissions" />
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyCard}>
-            <Feather name="alert-triangle" size={56} color="#F59E0B" style={styles.emptyIcon} />
-            <Text style={styles.emptyTitle}>Too Many Admissions Selected</Text>
-            <Text style={styles.emptyMessage}>Please select a maximum of 4 admissions to compare.</Text>
-            <Pressable 
-              style={styles.emptyButton}
-              onPress={() => navigation.navigate('StudentWatchlist')}
-            >
-              <Text style={styles.emptyButtonText}>Go to Watchlist</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
+      </StudentScreen>
     )
   }
 
   return (
-    <View style={styles.container}>
-      <TitleHeader title="Compare Admissions" />
-      
-      <View style={styles.headerBar}>
-        <Text style={styles.headerText}>
-          <Text style={styles.headerCount}>{count}</Text> Admissions Selected
-        </Text>
-      </View>
-
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {selectedAdmissions.map((admission: StudentAdmission) => (
-          <CompareCard 
-            key={admission.id} 
-            admission={admission}
-            onViewDetails={() => navigation.navigate('ProgramDetail', { id: admission.id })}
-          />
-        ))}
-
-        <View style={styles.highlightsCard}>
-          <View style={styles.highlightsHeader}>
-            <Feather name="zap" size={18} color="#2563EB" style={styles.highlightIcon} />
-            <Text style={styles.highlightsTitle}>Key Differences</Text>
-          </View>
-          <View style={styles.highlightsList}>
-            {highlights.map((highlight, index) => (
-              <View key={index} style={styles.highlightItem}>
-                <Feather name="check" size={14} color="#9CA3AF" style={styles.highlightBullet} />
-                <Text style={styles.highlightText}>{highlight}</Text>
+    <StudentScreen title="Compare Programs">
+      {selected.length >= 2 ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>
+            <View style={styles.table}>
+              <View style={styles.row}>
+                <View style={styles.labelCell} />
+                {selected.map((a) => (
+                  <View key={a.id} style={styles.headCell}>
+                    <View style={styles.headTop}>
+                      <UniversityAvatar name={a.university} size={32} />
+                      <Pressable onPress={() => remove(a.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Remove ${a.program}`}>
+                        <Feather name="x" size={16} color={colors.textFaint} />
+                      </Pressable>
+                    </View>
+                    <Pressable onPress={() => navigation.navigate('ProgramDetail', { id: a.id })} accessibilityRole="link">
+                      <Text style={styles.headProgram} numberOfLines={3}>
+                        {a.program}
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.headUniversity} numberOfLines={2}>
+                      {a.university}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-    </View>
+              {ROWS.map((row, index) => (
+                <View key={row.label} style={[styles.row, index % 2 === 0 && styles.rowStriped]}>
+                  <Text style={styles.labelCell}>{row.label}</Text>
+                  {selected.map((a) => {
+                    const value = row.value(a)
+                    return (
+                      <Text key={a.id} style={[styles.valueCell, value === 'Not specified' && styles.missing]}>
+                        {value}
+                      </Text>
+                    )
+                  })}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+
+          <Section title="AI comparison">
+            {ai ? (
+              <>
+                <Text style={styles.paragraph}>{ai.summary}</Text>
+                {ai.highlights.map((highlight) => (
+                  <View key={highlight} style={styles.highlight}>
+                    <Feather name="check" size={14} color={colors.primary} />
+                    <Text style={styles.highlightText}>{highlight}</Text>
+                  </View>
+                ))}
+                <View style={styles.aiMeta}>
+                  <Badge label={ai.method === 'ai' ? 'AI generated' : 'Rule-based summary'} tone="neutral" />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.muted}>Get a short comparison based on the programs’ published details.</Text>
+                <Pressable
+                  style={[styles.aiButton, aiState === 'loading' && styles.aiButtonBusy]}
+                  onPress={() => void runAiCompare()}
+                  disabled={aiState === 'loading'}
+                  accessibilityRole="button"
+                  accessibilityLabel="Compare with AI"
+                >
+                  <Feather name="zap" size={16} color="#FFFFFF" />
+                  <Text style={styles.aiButtonText}>{aiState === 'loading' ? 'Comparing…' : 'Compare with AI'}</Text>
+                </Pressable>
+                {aiState === 'error' ? <Text style={styles.error}>The AI comparison is unavailable right now. Try again later.</Text> : null}
+              </>
+            )}
+          </Section>
+        </>
+      ) : (
+        <Section title="Choose programs">
+          <Text style={styles.muted}>
+            Select {2 - selected.length} more program{2 - selected.length === 1 ? '' : 's'} to compare (up to {MAX_COMPARE}).
+          </Text>
+          {selected.map((a) => (
+            <AdmissionRow
+              key={a.id}
+              admission={a}
+              onPress={() => remove(a.id)}
+              trailing={<Badge label="Selected" tone="primary" icon="check" />}
+            />
+          ))}
+        </Section>
+      )}
+
+      {selected.length < MAX_COMPARE && candidates.length > 0 ? (
+        <Section title={saved.length > 0 ? 'Add from saved and open programs' : 'Add open programs'}>
+          {candidates.map((a) => (
+            <AdmissionRow
+              key={a.id}
+              admission={a}
+              onPress={() => add(a.id)}
+              trailing={<Feather name="plus-circle" size={20} color={colors.primary} />}
+            />
+          ))}
+        </Section>
+      ) : null}
+    </StudentScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
+  center: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
+  tableScroll: {
+    marginBottom: spacing.lg,
   },
-  headerBar: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  headerCount: {
-    fontWeight: '600',
-    color: '#111827',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+  table: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 16,
-    marginBottom: 16,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  row: {
+    flexDirection: 'row',
+  },
+  rowStriped: {
+    backgroundColor: colors.bg,
+  },
+  labelCell: {
+    width: LABEL_WIDTH,
+    padding: spacing.md,
+    fontSize: font.small,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  headCell: {
+    width: COLUMN_WIDTH,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.divider,
+  },
+  headTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
   },
-  cardTitleContainer: {
-    flex: 1,
-    marginRight: 8,
+  headProgram: {
+    fontSize: font.body,
+    fontWeight: '700',
+    color: colors.primary,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
+  headUniversity: {
+    fontSize: font.small,
+    color: colors.textMuted,
   },
-  cardSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+  valueCell: {
+    width: COLUMN_WIDTH,
+    padding: spacing.md,
+    fontSize: font.small,
+    color: colors.text,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.divider,
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
+  missing: {
+    color: colors.textFaint,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '500',
+  paragraph: {
+    fontSize: font.body,
+    lineHeight: 21,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
-  cardDetails: {
-    marginBottom: 16,
+  muted: {
+    fontSize: font.body,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
-  detailRow: {
+  highlight: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  detailIcon: {
-    marginRight: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#374151',
-    flex: 1,
-  },
-  summaryContainer: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
-  },
-  viewLink: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#2563EB',
-  },
-  viewLinkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  highlightsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 16,
-    marginBottom: 16,
-  },
-  highlightsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  highlightIcon: {
-    marginRight: 8,
-  },
-  highlightsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  highlightsList: {
-    marginTop: 0,
-  },
-  highlightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  highlightBullet: {
-    marginRight: 12,
-    marginTop: 2,
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   highlightText: {
     flex: 1,
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
+    fontSize: font.body,
+    color: colors.textSecondary,
   },
-  emptyContainer: {
-    flex: 1,
+  aiMeta: {
+    marginTop: spacing.md,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
   },
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 32,
-    maxWidth: 400,
-    alignItems: 'center',
+  aiButtonBusy: {
+    opacity: 0.6,
   },
-  emptyIcon: {
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyMessage: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  emptyButton: {
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  emptyButtonText: {
+  aiButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
+    fontSize: font.body,
+  },
+  error: {
+    marginTop: spacing.sm,
+    fontSize: font.small,
+    color: colors.danger,
   },
 })

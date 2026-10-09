@@ -1,808 +1,330 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { ScrollView, Text, View, Pressable, TextInput, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import type { StackNavigationProp } from '@react-navigation/stack'
-
-import type { RootStackParamList } from '../../navigation/AppNavigator'
-import { useAuthStore, useStudentStore } from '../../store'
-import { getStatusColor } from '../../data/studentData'
-import { PremiumHeader, CustomLoader } from '../../components/ui'
-import { trackCappedStudentActivitySafe } from '../../services'
 import { Feather } from '@expo/vector-icons'
+
+import type { RootStackParamList } from '../../navigation/types'
+import { useStudentStore } from '../../store'
+import { useStudentDashboardData } from '../../hooks/useStudentDashboardData'
+import { SOURCE_LABEL, type DataSource, type ProgramStatus, type StudentAdmission } from '../../domain/admission'
+import { StudentScreen, EmptyState, Chip, CustomLoader } from '../../components/ui'
+import AdmissionCard from '../../components/admission/AdmissionCard'
+import CompareTray, { useCompareSelection } from '../../components/admission/CompareTray'
+import { showErrorToast } from '../../services/toast'
+import { trackCappedStudentActivitySafe } from '../../services'
+import { colors, font, radius, spacing } from '../../theme'
+
+const SEARCH_DEBOUNCE_MS = 300
+
+type StatusFilter = 'all' | ProgramStatus
+type SourceFilter = 'all' | DataSource
+
+const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'Open', label: 'Open' },
+  { value: 'Closing Soon', label: 'Closing soon' },
+  { value: 'Closed', label: 'Closed' },
+]
+
+const SOURCE_OPTIONS: Array<{ value: SourceFilter; label: string }> = [
+  { value: 'all', label: 'All sources' },
+  { value: 'university', label: SOURCE_LABEL.university },
+  { value: 'scraper', label: SOURCE_LABEL.scraper },
+]
+
+const unique = (values: Array<string | null>) =>
+  Array.from(new Set(values.filter((v): v is string => Boolean(v)))).sort((a, b) => a.localeCompare(b))
 
 export default function SearchAdmissionsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const user = useAuthStore(state => state.user)
-  const signOut = useAuthStore(state => state.signOut)
-  const admissions = useStudentStore(state => state.admissions)
-  const notifications = useStudentStore(state => state.notifications)
-  const toggleSaved = useStudentStore(state => state.toggleSaved)
-  const searchAdmissions = useStudentStore(state => state.searchAdmissions)
+  const catalog = useStudentStore((state) => state.admissions)
+  const watchlist = useStudentStore((state) => state.watchlist)
+  const searchAdmissions = useStudentStore((state) => state.searchAdmissions)
+  const setSaved = useStudentStore((state) => state.setSaved)
+  const { loading, refetch } = useStudentDashboardData()
 
-  const isAdmissionSaved = (admission: (typeof admissions)[number]) => {
-    const stored = admissions.find((a) => a.id === admission.id)
-    return Boolean(stored?.saved ?? admission.saved)
-  }
-  
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [filtersVisible, setFiltersVisible] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [universityFilter, setUniversityFilter] = useState('')
-  const [cityFilter, setCityFilter] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([])
-  const [compareIds, setCompareIds] = useState<string[]>([])
-  const [isLoadingResults, setIsLoadingResults] = useState(false)
-  const [searchResults, setSearchResults] = useState(admissions)
-  const lastTrackedQueryRef = useRef<string>('')
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<StudentAdmission[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const [source, setSource] = useState<SourceFilter>('all')
+  const [university, setUniversity] = useState('')
+  const [degree, setDegree] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const compare = useCompareSelection()
 
+  // Text search goes to the API (title, university, description, ...); filters apply locally.
   useEffect(() => {
-    setSearchResults(admissions)
-  }, [admissions])
-
-  const universities = useMemo(() => {
-    return Array.from(new Set(admissions.map(a => a.university))).sort()
-  }, [admissions])
-
-  const cities = useMemo(() => {
-    return Array.from(new Set(admissions.map(a => a.city).filter(Boolean))).sort()
-  }, [admissions])
-
-  const toggleStatus = (status: string) => {
-    setSelectedStatus(prev =>
-      prev.includes(status)
-        ? prev.filter(s => s !== status)
-        : [...prev, status]
-    )
-  }
-
-  const handleResetFilters = () => {
-    setSearchQuery('')
-    setUniversityFilter('')
-    setCityFilter('')
-    setSelectedStatus([])
-  }
-
-  useEffect(() => {
-    const trimmedQuery = searchQuery.trim()
-    const shouldUseApiSearch = trimmedQuery.length > 0 || cityFilter.length > 0
-
-    if (!shouldUseApiSearch) {
-      setSearchResults(admissions)
+    const text = query.trim()
+    if (!text) {
+      setSearchResults(null)
+      setSearching(false)
       return
     }
-
-    let isCancelled = false
-    setIsLoadingResults(true)
-
+    let cancelled = false
+    setSearching(true)
     const timer = setTimeout(() => {
-      searchAdmissions({
-        search: trimmedQuery || undefined,
-        city: cityFilter || undefined,
-        limit: 100,
-      })
-        .then(results => {
-          if (!isCancelled) {
-            setSearchResults(results)
+      searchAdmissions({ search: text })
+        .then((results) => {
+          if (cancelled) return
+          setSearchResults(results)
+          // Activity entity ids must be admission UUIDs: record the top result.
+          if (text.length >= 2 && results[0]) {
+            void trackCappedStudentActivitySafe({
+              activity_type: 'searched',
+              entity_type: 'admission',
+              entity_id: results[0].id,
+              metadata: { source: 'mobile_search', query: text, result_count: results.length },
+            })
           }
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([])
         })
         .finally(() => {
-          if (!isCancelled) {
-            setIsLoadingResults(false)
-          }
+          if (!cancelled) setSearching(false)
         })
-    }, 250)
-
+    }, SEARCH_DEBOUNCE_MS)
     return () => {
-      isCancelled = true
+      cancelled = true
       clearTimeout(timer)
     }
-  }, [admissions, cityFilter, searchAdmissions, searchQuery])
+  }, [query, searchAdmissions])
 
-  const filteredAdmissions = useMemo(() => {
-    let filtered = [...searchResults]
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(a =>
-        a.university.toLowerCase().includes(query) ||
-        a.program.toLowerCase().includes(query) ||
-        a.degree.toLowerCase().includes(query)
-      )
-    }
-
-    if (universityFilter) {
-      filtered = filtered.filter(a => a.university === universityFilter)
-    }
-
-    if (cityFilter) {
-      filtered = filtered.filter(a => a.city === cityFilter)
-    }
-
-    if (selectedStatus.length > 0) {
-      filtered = filtered.filter(a => selectedStatus.includes(a.status))
-    }
-
-    const isDeadlinePassed = (item: (typeof filtered)[number]) =>
-      item.daysRemaining < 0 || item.programStatus === 'Closed'
-
-    const activeAdmissions = filtered.filter((item) => !isDeadlinePassed(item))
-    const passedAdmissions = filtered.filter((item) => isDeadlinePassed(item))
-
-    return [...activeAdmissions, ...passedAdmissions]
-  }, [searchResults, searchQuery, universityFilter, cityFilter, selectedStatus])
-
-  useEffect(() => {
-    const trimmedQuery = searchQuery.trim()
-    if (trimmedQuery.length > 0 || cityFilter.length > 0) {
-      return
-    }
-
-    setIsLoadingResults(true)
-    const timer = setTimeout(() => setIsLoadingResults(false), 300)
-    return () => clearTimeout(timer)
-  }, [searchQuery, universityFilter, cityFilter, selectedStatus, admissions.length])
-
-  const toggleCompare = (id: string) => {
-    setCompareIds(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(i => i !== id)
-      } else if (prev.length < 4) {
-        return [...prev, id]
-      } else {
-        return prev
-      }
+  // Search results carry their own watch state snapshot; keep it in sync with saves.
+  const base = useMemo(() => {
+    const list = searchResults ?? catalog
+    return list.map((a) => {
+      const entry = watchlist[a.id]
+      return entry ? { ...a, saved: true, alertEnabled: entry.alertOptIn } : { ...a, saved: false, alertEnabled: false }
     })
+  }, [searchResults, catalog, watchlist])
+
+  const universities = useMemo(() => unique(catalog.map((a) => a.university)), [catalog])
+  const degrees = useMemo(() => unique(catalog.map((a) => a.degree)), [catalog])
+
+  const results = useMemo(
+    () =>
+      base.filter(
+        (a) =>
+          (status === 'all' || a.programStatus === status) &&
+          (source === 'all' || a.source === source) &&
+          (!university || a.university === university) &&
+          (!degree || a.degree === degree)
+      ),
+    [base, status, source, university, degree]
+  )
+
+  const activeFilters = [status !== 'all', source !== 'all', Boolean(university), Boolean(degree)].filter(Boolean).length
+
+  const resetFilters = () => {
+    setStatus('all')
+    setSource('all')
+    setUniversity('')
+    setDegree('')
   }
 
-  const handleCompare = () => {
-    if (compareIds.length >= 2) {
-      void trackCappedStudentActivitySafe({
-        activity_type: 'compared',
-        entity_type: 'admission_set',
-        entity_id: compareIds.join(','),
-        metadata: {
-          source: 'mobile_search_admissions',
-          compare_count: compareIds.length,
-        },
-      })
-      navigation.navigate('StudentCompare', { ids: compareIds })
-    }
-  }
-
-  useEffect(() => {
-    const query = searchQuery.trim()
-    if (query.length < 2) return
-
-    const primaryAdmissionId = filteredAdmissions[0]?.id
-    if (!primaryAdmissionId) return
-
-    const queryKey = `${query.toLowerCase()}|${cityFilter}`
-    if (queryKey === lastTrackedQueryRef.current) return
-
-    lastTrackedQueryRef.current = queryKey
-    void trackCappedStudentActivitySafe({
-      activity_type: 'searched',
-      entity_type: 'admission',
-      entity_id: primaryAdmissionId,
-      metadata: {
-        source: 'mobile_search_admissions',
-        query,
-        city_filter: cityFilter || null,
-        result_count: filteredAdmissions.length,
-      },
-    })
-  }, [searchQuery, cityFilter, filteredAdmissions])
-
-  const trackOpenProgramDetail = (admissionId: string) => {
-    void trackCappedStudentActivitySafe({
-      activity_type: 'viewed',
-      entity_type: 'admission',
-      entity_id: admissionId,
-      metadata: {
-        source: 'mobile_search_admissions',
-      },
-    })
-    navigation.navigate('ProgramDetail', { id: admissionId })
-  }
-
-  const trackToggleCompare = (admissionId: string) => {
-    void trackCappedStudentActivitySafe({
-      activity_type: 'compared',
-      entity_type: 'admission',
-      entity_id: admissionId,
-      metadata: {
-        source: 'mobile_search_admissions',
-      },
-    })
-    toggleCompare(admissionId)
-  }
-
-  const trackToggleSaved = (admissionId: string, currentlySaved: boolean) => {
-    void toggleSaved(admissionId)
-    void trackCappedStudentActivitySafe({
-      activity_type: 'saved',
-      entity_type: 'admission',
-      entity_id: admissionId,
-      metadata: {
-        source: 'mobile_search_admissions',
-        saved: !currentlySaved,
-      },
-    })
+  const toggleSave = async (admission: StudentAdmission) => {
+    const ok = await setSaved(admission.id, !admission.saved)
+    if (!ok) showErrorToast('Could not update saved programs', 'Check your connection and try again.')
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <PremiumHeader
-        userName={user?.name || 'Student'}
-        userRole="Student"
-        notifications={notifications.filter(n => !n.read).length}
-        onNotificationPress={() => navigation.navigate('StudentNotifications')}
-        onLogout={signOut}
-      />
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Search Bar */}
-        <View style={styles.searchCard}>
-          <View style={styles.searchInputRow}>
-            <Feather name="search" size={14} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search programs, universities..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
-        </View>
-
-        {/* Toolbar */}
-        <View style={styles.toolbar}>
-          <Pressable
-            style={styles.filterButton}
-            onPress={() => setFiltersVisible(!filtersVisible)}
-          >
-            <Text style={styles.filterButtonText}>
-              {filtersVisible ? 'Hide' : 'Show'} Filters
-            </Text>
+    <StudentScreen refreshing={loading} onRefresh={() => void refetch()} top={<CompareTray ids={compare.ids} onClear={compare.clear} />}>
+      <View style={styles.searchBox}>
+        <Feather name="search" size={16} color={colors.textFaint} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search programs or universities"
+          placeholderTextColor={colors.textFaint}
+          value={query}
+          onChangeText={setQuery}
+          returnKeyType="search"
+          accessibilityLabel="Search admissions"
+        />
+        {query ? (
+          <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+            <Feather name="x-circle" size={16} color={colors.textFaint} />
           </Pressable>
+        ) : null}
+      </View>
 
-          <Text style={styles.resultCount}>
-            {filteredAdmissions.length} Result{filteredAdmissions.length !== 1 ? 's' : ''}
+      <View style={styles.toolbar}>
+        <Text style={styles.count}>
+          {searching ? 'Searching…' : `${results.length} result${results.length === 1 ? '' : 's'}`}
+        </Text>
+        <Pressable
+          style={[styles.filterToggle, filtersOpen && styles.filterToggleActive]}
+          onPress={() => setFiltersOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel="Filters"
+          accessibilityState={{ expanded: filtersOpen }}
+        >
+          <Feather name="sliders" size={14} color={filtersOpen ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.filterToggleText, filtersOpen && styles.filterToggleTextActive]}>
+            Filters{activeFilters ? ` (${activeFilters})` : ''}
           </Text>
+        </Pressable>
+      </View>
 
-          <View style={styles.viewToggle}>
-            <Pressable
-              style={[styles.viewButton, viewMode === 'grid' && styles.viewButtonActive]}
-              onPress={() => setViewMode('grid')}
-            >
-              <Text style={[styles.viewButtonText, viewMode === 'grid' && styles.viewButtonTextActive]}>Grid</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.viewButton, viewMode === 'list' && styles.viewButtonActive]}
-              onPress={() => setViewMode('list')}
-            >
-              <Text style={[styles.viewButtonText, viewMode === 'list' && styles.viewButtonTextActive]}>List</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Compare Bar */}
-        {compareIds.length > 0 && (
-          <View style={styles.compareBar}>
-            <Text style={styles.compareText}>{compareIds.length} selected</Text>
-            <Pressable
-              style={[styles.compareButton, compareIds.length < 2 && styles.compareButtonDisabled]}
-              onPress={handleCompare}
-              disabled={compareIds.length < 2}
-            >
-              <Text style={styles.compareButtonText}>Compare ({compareIds.length})</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* Filters */}
-        {filtersVisible && (
-          <View style={styles.filtersCard}>
-            <Text style={styles.filtersTitle}>Filters</Text>
-
-            {/* University Filter */}
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>University</Text>
-              <View style={styles.filterChips}>
-                <Pressable
-                  style={[styles.filterChip, !universityFilter && styles.filterChipActive]}
-                  onPress={() => setUniversityFilter('')}
-                >
-                  <Text style={[styles.filterChipText, !universityFilter && styles.filterChipTextActive]}>All</Text>
-                </Pressable>
-                {universities.slice(0, 5).map(uni => (
-                  <Pressable
-                    key={uni}
-                    style={[styles.filterChip, universityFilter === uni && styles.filterChipActive]}
-                    onPress={() => setUniversityFilter(universityFilter === uni ? '' : uni)}
-                  >
-                    <Text style={[styles.filterChipText, universityFilter === uni && styles.filterChipTextActive]} numberOfLines={1}>{uni}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            {/* City Filter */}
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>City</Text>
-              <View style={styles.filterChips}>
-                <Pressable
-                  style={[styles.filterChip, !cityFilter && styles.filterChipActive]}
-                  onPress={() => setCityFilter('')}
-                >
-                  <Text style={[styles.filterChipText, !cityFilter && styles.filterChipTextActive]}>All</Text>
-                </Pressable>
-                {cities.map(city => (
-                  <Pressable
-                    key={city}
-                    style={[styles.filterChip, cityFilter === city && styles.filterChipActive]}
-                    onPress={() => setCityFilter(cityFilter === city ? '' : city)}
-                  >
-                    <Text style={[styles.filterChipText, cityFilter === city && styles.filterChipTextActive]}>{city}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            {/* Status Filter */}
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Status</Text>
-              <View style={styles.filterChips}>
-                {['Verified', 'Pending', 'Updated'].map(status => (
-                  <Pressable
-                    key={status}
-                    style={[styles.filterChip, selectedStatus.includes(status) && styles.filterChipActive]}
-                    onPress={() => toggleStatus(status)}
-                  >
-                    <Text style={[styles.filterChipText, selectedStatus.includes(status) && styles.filterChipTextActive]}>{status}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            <Pressable style={styles.resetButton} onPress={handleResetFilters}>
-              <Text style={styles.resetButtonText}>Reset Filters</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* Results */}
-        {isLoadingResults ? (
-          <View style={styles.loadingResults}>
-            <CustomLoader size={40} color="#2563EB" />
-          </View>
-        ) : viewMode === 'grid' ? (
-          <View style={styles.gridContainer}>
-            {filteredAdmissions.map((admission) => {
-              const statusColors = getStatusColor(admission.status)
-              const isSaved = isAdmissionSaved(admission)
-              const isComparing = compareIds.includes(admission.id)
-              const daysLeft = admission.daysRemaining
-
-              return (
-                <View key={admission.id} style={styles.gridCard}>
-                  <Pressable
-                    style={styles.gridCardInner}
-                    onPress={() => trackOpenProgramDetail(admission.id)}
-                  >
-                    <View style={styles.cardHeader}>
-                      <View style={[styles.universityLogo, { backgroundColor: admission.logoBg }]}>
-                        <Text style={styles.universityLogoText}>
-                          {admission.university.substring(0, 2).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
-                        <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
-                          {admission.status}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.universityName} numberOfLines={1}>{admission.university}</Text>
-                    <Text style={styles.programName} numberOfLines={2}>{admission.program}</Text>
-
-                    <View style={styles.cardDetails}>
-                      <Text style={[styles.detailText, daysLeft <= 7 && styles.urgentText]}>
-                        {admission.deadlineDisplay}
-                      </Text>
-                    </View>
-
-                    <View style={styles.cardActions}>
-                      <Pressable
-                        style={styles.actionButton}
-                        onPress={(e) => {
-                          e.stopPropagation()
-                          trackToggleCompare(admission.id)
-                        }}
-                      >
-                        <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
-                      </Pressable>
-                      <Pressable
-                        style={styles.actionButton}
-                        onPress={(e) => {
-                          e.stopPropagation()
-                          trackToggleSaved(admission.id, isSaved)
-                        }}
-                      >
-                        <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />
-                      </Pressable>
-                    </View>
-                  </Pressable>
-                </View>
-              )
-            })}
-          </View>
-        ) : (
-          <View style={styles.listContainer}>
-            {filteredAdmissions.map((admission) => {
-              const statusColors = getStatusColor(admission.status)
-              const isSaved = isAdmissionSaved(admission)
-              const isComparing = compareIds.includes(admission.id)
-              const daysLeft = admission.daysRemaining
-
-              return (
-                <Pressable
-                  key={admission.id}
-                  style={styles.listCard}
-                  onPress={() => trackOpenProgramDetail(admission.id)}
-                >
-                  <View style={styles.listCardContent}>
-                    <View style={[styles.universityLogo, { backgroundColor: admission.logoBg }]}>
-                      <Text style={styles.universityLogoText}>
-                        {admission.university.substring(0, 2).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.listCardInfo}>
-                      <Text style={styles.programName} numberOfLines={1}>{admission.program}</Text>
-                      <Text style={styles.universityName} numberOfLines={1}>{admission.university} • {admission.degree}</Text>
-                      <View style={styles.listCardMeta}>
-                        <Text style={[styles.detailText, daysLeft <= 7 && styles.urgentText]}>
-                          {admission.deadlineDisplay}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.listCardActions}>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColors.bg, marginBottom: 8 }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
-                        {admission.status}
-                      </Text>
-                    </View>
-                    <View style={styles.listActionButtons}>
-                      <Pressable
-                        style={styles.actionButton}
-                        onPress={(e) => {
-                          e.stopPropagation()
-                          trackToggleCompare(admission.id)
-                        }}
-                      >
-                        <Feather name="shuffle" size={18} color={isComparing ? '#2563EB' : '#6B7280'} />
-                      </Pressable>
-                      <Pressable
-                        style={styles.actionButton}
-                        onPress={(e) => {
-                          e.stopPropagation()
-                          trackToggleSaved(admission.id, isSaved)
-                        }}
-                      >
-                        <Feather name="star" size={18} color={isSaved ? '#2563EB' : '#6B7280'} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </Pressable>
-              )
-            })}
-          </View>
-        )}
-
-        {filteredAdmissions.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No admissions found</Text>
-            <Pressable style={styles.resetButton} onPress={handleResetFilters}>
-              <Text style={styles.resetButtonText}>Reset Filters</Text>
-            </Pressable>
-          </View>
-        )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        {STATUS_OPTIONS.map((option) => (
+          <Chip key={option.value} label={option.label} active={status === option.value} onPress={() => setStatus(option.value)} />
+        ))}
       </ScrollView>
-    </SafeAreaView>
+
+      {filtersOpen ? (
+        <View style={styles.filters}>
+          <Text style={styles.filterLabel}>Source</Text>
+          <View style={styles.wrap}>
+            {SOURCE_OPTIONS.map((option) => (
+              <Chip key={option.value} label={option.label} active={source === option.value} onPress={() => setSource(option.value)} />
+            ))}
+          </View>
+
+          <Text style={styles.filterLabel}>University</Text>
+          <View style={styles.wrap}>
+            <Chip label="All" active={!university} onPress={() => setUniversity('')} />
+            {universities.map((name) => (
+              <Chip key={name} label={name} active={university === name} onPress={() => setUniversity(university === name ? '' : name)} />
+            ))}
+          </View>
+
+          {degrees.length > 0 ? (
+            <>
+              <Text style={styles.filterLabel}>Degree</Text>
+              <View style={styles.wrap}>
+                <Chip label="All" active={!degree} onPress={() => setDegree('')} />
+                {degrees.map((name) => (
+                  <Chip key={name} label={name} active={degree === name} onPress={() => setDegree(degree === name ? '' : name)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {activeFilters > 0 ? (
+            <Pressable onPress={resetFilters} style={styles.reset} accessibilityRole="button">
+              <Text style={styles.resetText}>Reset filters</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {searching && results.length === 0 ? (
+        <View style={styles.loading}>
+          <CustomLoader size={40} color={colors.primary} />
+        </View>
+      ) : results.length === 0 ? (
+        <EmptyState
+          icon="search"
+          title="No admissions found"
+          message={query || activeFilters ? 'Try a different search or fewer filters.' : 'No verified admissions are published yet.'}
+          actionLabel={activeFilters ? 'Reset filters' : undefined}
+          onAction={activeFilters ? resetFilters : undefined}
+        />
+      ) : (
+        results.map((admission) => (
+          <AdmissionCard
+            key={admission.id}
+            admission={admission}
+            onPress={() => navigation.navigate('ProgramDetail', { id: admission.id })}
+            onToggleSave={() => void toggleSave(admission)}
+            onToggleCompare={() => compare.toggle(admission.id)}
+            comparing={compare.ids.includes(admission.id)}
+          />
+        ))
+      )}
+    </StudentScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  content: {
-    padding: 16,
-  },
-  searchCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  searchInputRow: {
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    minHeight: 46,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: '#111827',
-    paddingVertical: 2,
+    fontSize: font.body,
+    color: colors.text,
+    paddingVertical: spacing.sm,
   },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  filterButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  resultCount: {
-    fontSize: 14,
-    color: '#6B7280',
-    flex: 1,
-  },
-  loadingResults: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  viewToggle: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  viewButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  viewButtonActive: {
-    backgroundColor: '#EFF6FF',
-  },
-  viewButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  viewButtonTextActive: {
-    color: '#2563EB',
-  },
-  compareBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#EFF6FF',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    marginTop: spacing.md,
   },
-  compareText: {
-    fontSize: 14,
-    color: '#1E40AF',
-    fontWeight: '600',
+  count: {
+    fontSize: font.body,
+    color: colors.textMuted,
   },
-  compareButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-  },
-  compareButtonDisabled: {
-    opacity: 0.5,
-  },
-  compareButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  filtersCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  filtersTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
+  filterToggleActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
-  filterGroup: {
-    marginBottom: 16,
+  filterToggleText: {
+    fontSize: font.small,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  filterToggleTextActive: {
+    color: colors.primary,
+  },
+  chips: {
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  filters: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   filterLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  filterChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-  },
-  filterChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    margin: 4,
-  },
-  filterChipActive: {
-    backgroundColor: '#2563EB',
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  resetButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  resetButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6,
-  },
-  gridCard: {
-    width: '50%',
-    padding: 6,
-  },
-  gridCardInner: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  universityLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  universityLogoText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: font.small,
     fontWeight: '700',
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+  wrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  statusBadgeText: {
-    fontSize: 10,
+  reset: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+  },
+  resetText: {
+    color: colors.primary,
     fontWeight: '600',
+    fontSize: font.body,
   },
-  universityName: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  programName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-    minHeight: 36,
-  },
-  cardDetails: {
-    marginBottom: 12,
-  },
-  detailText: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  urgentText: {
-    color: '#EF4444',
-    fontWeight: '600',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    paddingTop: 8,
-  },
-  actionButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  actionIcon: {
-    fontSize: 18,
-    opacity: 0.6,
-  },
-  actionIconActive: {
-    opacity: 1,
-    color: '#2563EB',
-  },
-  listContainer: {
-    marginBottom: 16,
-  },
-  listCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  listCardContent: {
-    flexDirection: 'row',
-    flex: 1,
-    marginRight: 12,
-  },
-  listCardInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  listCardMeta: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  listCardActions: {
-    alignItems: 'flex-end',
-  },
-  listActionButtons: {
-    flexDirection: 'row',
-  },
-  emptyState: {
-    padding: 48,
+  loading: {
     alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginBottom: 16,
+    paddingVertical: 40,
   },
 })
-

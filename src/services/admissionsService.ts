@@ -31,12 +31,15 @@ export const admissionsService = {
     field_of_study?: string;
     location?: string;
     program_type?: string;
-    verification_status?: string;
+    delivery_mode?: string;
     page?: number;
     limit?: number;
+    /** Include programs whose deadline passed (shown as closed). Students only ever get verified programs. */
+    include_closed?: boolean;
   }): Promise<PaginatedResponse<Admission>> => {
-    console.log('📋 [admissionsService] Fetching admissions with filters:', params);
-    const response = await apiClient.get('/admissions', { params });
+    // The backend validator caps limit at 100.
+    const safeParams = { ...params, limit: Math.min(params?.limit ?? 20, 100) };
+    const response = await apiClient.get('/admissions', { params: safeParams });
     return response.data;
   },
 
@@ -49,7 +52,6 @@ export const admissionsService = {
    * @returns Promise resolving to admission data
    */
   getById: async (id: string): Promise<ApiResponse<Admission>> => {
-    console.log('📋 [admissionsService] Fetching admission:', id);
     const response = await apiClient.get(`/admissions/${id}`);
     return response.data;
   },

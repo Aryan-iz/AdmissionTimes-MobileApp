@@ -45,6 +45,7 @@ import {
 import { subscribeToStudentNotificationInserts } from './src/realtime/notificationsSubscription'
 import { notificationsService } from './src/services/notificationsService'
 import { toastConfig } from './src/services/toast'
+import { admissionIdOf } from './src/domain/notification'
 
 function syncNavigationRoute(setActiveRouteName: (routeName?: string) => void) {
   const routeName = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined
@@ -56,6 +57,9 @@ function AppNavigationHost() {
   const user = useAuthStore((state) => state.user)
   const refreshNotifications = useStudentStore((state) => state.refreshNotifications)
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
+  // Read by the realtime handler without re-subscribing when the token arrives.
+  const expoPushTokenRef = useRef<string | null>(null)
+  expoPushTokenRef.current = expoPushToken
   const appState = useRef(AppState.currentState)
   const previousStudentUserIdRef = useRef<string | null>(null)
   const registeredTokenKeyRef = useRef<string | null>(null)
@@ -135,10 +139,8 @@ function AppNavigationHost() {
     const responseSubscription: EventSubscription = addNotificationResponseListener((response: NotificationResponse) => {
       const data = response.notification.request.content.data || {}
       markNotificationAsSeen(extractNotificationId(data as Record<string, unknown>))
-      const admissionId =
-        (data.admissionId as string | undefined) ||
-        (data.admission_id as string | undefined) ||
-        (data.related_entity_id as string | undefined)
+      // Server pushes carry admission_id; local notifications (realtime) carry admissionId.
+      const admissionId = (data.admission_id as string | undefined) || (data.admissionId as string | undefined)
 
       refreshNotifications().catch(() => {})
 
@@ -222,40 +224,27 @@ function AppNavigationHost() {
       unsubscribeRealtime = subscribeToStudentNotificationInserts({
         userId: user.id,
         onInsert: (payload) => {
-          refresh()
+          refreshNotifications({ force: true }).catch(() => {})
 
           const notificationId = payload.id || null
           if (hasSeenNotificationRecently(notificationId)) {
             return
           }
 
-          if (config.enablePushNotifications && expoPushToken) {
+          // With a registered push token the server push shows it; otherwise show it locally.
+          if (config.enablePushNotifications && expoPushTokenRef.current) {
             return
           }
 
-          if (config.enablePushNotifications) {
-            showLocalNotification(
-              payload.title || 'New Notification',
-              payload.message || 'You have a new update.',
-              {
-                notification_id: payload.id,
-                admissionId: payload.related_entity_type === 'admission' ? payload.related_entity_id : undefined,
-                related_entity_id: payload.related_entity_id,
-              }
-            ).catch(() => {})
-            markNotificationAsSeen(notificationId)
-          } else {
-            showLocalNotification(
-              payload.title || 'New Notification',
-              payload.message || 'You have a new update.',
-              {
-                notification_id: payload.id,
-                admissionId: payload.related_entity_type === 'admission' ? payload.related_entity_id : undefined,
-                related_entity_id: payload.related_entity_id,
-              }
-            ).catch(() => {})
-            markNotificationAsSeen(notificationId)
-          }
+          showLocalNotification(
+            payload.title || 'New Notification',
+            payload.message || 'You have a new update.',
+            {
+              notification_id: payload.id,
+              admissionId: admissionIdOf(payload),
+            }
+          ).catch(() => {})
+          markNotificationAsSeen(notificationId)
         },
         onError: (status) => {
           console.warn('⚠️ [Realtime] Notifications channel issue:', status)
@@ -270,7 +259,7 @@ function AppNavigationHost() {
         unsubscribeRealtime().catch(() => {})
       }
     }
-  }, [expoPushToken, refreshNotifications, user?.id, user?.role])
+  }, [refreshNotifications, user?.id, user?.role])
 
   return (
     <NavigationContainer

@@ -1,666 +1,494 @@
-import { useState, useMemo, useEffect } from 'react'
-import { ScrollView, View, Text, Pressable, StyleSheet, Linking, Alert } from 'react-native'
-import { RouteProp, useRoute, useNavigation } from '@react-navigation/native'
-import { StackNavigationProp } from '@react-navigation/stack'
-import { RootStackParamList } from '../../navigation/AppNavigator'
-import { useStudentStore } from '../../store'
-import { formatDateTimeDisplay } from '../../data/studentData'
-import { TitleHeader, CustomLoader } from '../../components/ui'
-import { ReminderModal } from '../../components/student'
-import { trackCappedStudentActivitySafe } from '../../services'
+import { useEffect, useState } from 'react'
+import { View, Text, Pressable, StyleSheet, Linking } from 'react-native'
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
+import type { StackNavigationProp } from '@react-navigation/stack'
 import { Feather } from '@expo/vector-icons'
 
-type ProgramDetailScreenRouteProp = RouteProp<RootStackParamList, 'ProgramDetail'>
-type ProgramDetailScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ProgramDetail'>
+import type { RootStackParamList } from '../../navigation/types'
+import { useStudentStore } from '../../store'
+import { SOURCE_HINT, type StudentAdmission } from '../../domain/admission'
+import { daysLeftLabel, formatDateTime } from '../../domain/dates'
+import { StudentScreen, Section, EmptyState, CustomLoader } from '../../components/ui'
+import UniversityAvatar from '../../components/admission/UniversityAvatar'
+import { ProgramStatusBadge, SourceBadge } from '../../components/admission/AdmissionBadges'
+import { deadlineTone } from '../../components/admission/AdmissionCard'
+import { showErrorToast, showSuccessToast } from '../../services/toast'
+import { trackCappedStudentActivitySafe } from '../../services'
+import { useAi } from '../../contexts/AiContext'
+import { colors, font, radius, spacing } from '../../theme'
+
+type DetailRoute = RouteProp<RootStackParamList, 'ProgramDetail'>
+
+/** Primary link: the portal or announcement students act on. */
+const primaryLink = (a: StudentAdmission): { label: string; url: string } | null => {
+  if (a.portalUrl) return { label: 'Apply on admission portal', url: a.portalUrl }
+  if (a.source === 'scraper' && a.announcementUrl) return { label: 'View official announcement', url: a.announcementUrl }
+  if (a.applyUrl) return { label: 'Open official page', url: a.applyUrl }
+  if (a.websiteUrl) return { label: 'Visit university website', url: a.websiteUrl }
+  return null
+}
+
+const openUrl = async (url: string) => {
+  try {
+    await Linking.openURL(url)
+  } catch {
+    showErrorToast('Could not open link', url)
+  }
+}
+
+function Fact({ label, value }: { label: string; value: string | null }) {
+  return (
+    <View style={styles.fact}>
+      <Text style={styles.factLabel}>{label}</Text>
+      <Text style={[styles.factValue, !value && styles.factMissing]}>{value ?? 'Not specified'}</Text>
+    </View>
+  )
+}
+
+function ActionButton({
+  icon,
+  label,
+  active,
+  busy,
+  onPress,
+}: {
+  icon: keyof typeof Feather.glyphMap
+  label: string
+  active?: boolean
+  busy?: boolean
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      style={[styles.action, active && styles.actionActive]}
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active, busy }}
+    >
+      <Feather name={icon} size={16} color={active ? colors.primary : colors.textSecondary} />
+      <Text style={[styles.actionText, active && styles.actionTextActive]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  )
+}
 
 export default function ProgramDetailScreen() {
-  const route = useRoute<ProgramDetailScreenRouteProp>()
-  const navigation = useNavigation<ProgramDetailScreenNavigationProp>()
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Eligibility' | 'Important Dates'>('Overview')
-  const [isLoading, setIsLoading] = useState(true)
-  const [reminderModalVisible, setReminderModalVisible] = useState(false)
-  const admissions = useStudentStore(state => state.admissions)
-  const toggleAlert = useStudentStore(state => state.toggleAlert)
-  
-  // Helper to get admission by ID
-  const getAdmissionById = (id: string) => admissions.find(a => a.id === id)
+  const route = useRoute<DetailRoute>()
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
+  const programId = route.params?.id
+  const program = useStudentStore((state) => state.admissions.find((a) => a.id === programId))
+  const ensureAdmission = useStudentStore((state) => state.ensureAdmission)
+  const setSaved = useStudentStore((state) => state.setSaved)
+  const setAlert = useStudentStore((state) => state.setAlert)
+  const { setContext } = useAi()
+  const [loading, setLoading] = useState(!program)
+  const [busy, setBusy] = useState<'save' | 'alert' | null>(null)
+
+  // Opened from a notification or link, the program may not be loaded yet.
+  useEffect(() => {
+    let cancelled = false
+    if (!programId) {
+      setLoading(false)
+      return
+    }
+    ensureAdmission(programId).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [programId, ensureAdmission])
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const program = route.params?.id ? getAdmissionById(route.params.id) : undefined
-  const isScraperProgram = String(program?.dataOrigin || '').toLowerCase() === 'scraper'
-
-  useEffect(() => {
-    if (!program?.id) return
-
+    if (!program) return
+    setContext(`Program Details: ${program.program} at ${program.university}`)
     void trackCappedStudentActivitySafe({
       activity_type: 'viewed',
       entity_type: 'admission',
       entity_id: program.id,
-      metadata: {
-        source: 'mobile_program_detail',
-      },
+      metadata: { source: 'mobile_program_detail' },
     })
+    // Track once per program.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program?.id])
-  
-  // Get related programs (same degree type, different university, limit 3)
-  const relatedPrograms = useMemo(() => {
-    if (!program) return []
-    return admissions
-      .filter(a => a.id !== program.id && a.degreeType === program.degreeType)
-      .slice(0, 3)
-  }, [program, admissions])
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <View style={styles.container}>
-        <TitleHeader title="Program Details" />
-        <View style={styles.loadingContainer}>
-          <CustomLoader size={60} color="#2563EB" />
-          <Text style={styles.loadingText}>Loading program details...</Text>
+      <StudentScreen title="Program Details" scroll={false}>
+        <View style={styles.center}>
+          <CustomLoader size={48} color={colors.primary} />
         </View>
-      </View>
+      </StudentScreen>
     )
   }
 
   if (!program) {
     return (
-      <View style={styles.container}>
-        <TitleHeader title="Program Details" />
-        <View style={styles.errorContainer}>
-          <Feather name="alert-circle" size={56} color="#EF4444" style={styles.errorIcon} />
-          <Text style={styles.errorText}>Program not found</Text>
-          <Pressable 
-            style={styles.errorButton}
-            onPress={() => navigation.navigate('StudentDashboard')}
-          >
-            <Text style={styles.errorButtonText}>Go to Dashboard</Text>
-          </Pressable>
-        </View>
-      </View>
+      <StudentScreen title="Program Details">
+        <EmptyState
+          icon="alert-circle"
+          title="Program not available"
+          message="It may have been removed or is no longer published."
+          actionLabel="Search admissions"
+          onAction={() => navigation.reset({ index: 0, routes: [{ name: 'StudentSearch' }] })}
+        />
+      </StudentScreen>
     )
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Open': return { bg: '#D1FAE5', text: '#10B981' }
-      case 'Closing Soon': return { bg: '#FEF3C7', text: '#FACC15' }
-      case 'Closed': return { bg: '#FEE2E2', text: '#EF4444' }
-      default: return { bg: '#F3F4F6', text: '#6B7280' }
-    }
+  const link = primaryLink(program)
+  const closed = program.programStatus === 'Closed'
+
+  const toggleSave = async () => {
+    setBusy('save')
+    const ok = await setSaved(program.id, !program.saved)
+    setBusy(null)
+    if (!ok) showErrorToast('Could not update saved programs', 'Check your connection and try again.')
+    else if (!program.saved) showSuccessToast('Saved', 'Deadline reminders are on for this program.')
   }
 
-  const statusColors = getStatusColor(program.programStatus)
-  const daysRemaining = program.daysRemaining
-  const lastUpdatedDisplay = formatDateTimeDisplay(program.updated)
-  const displayDegree = program.degree || (isScraperProgram ? 'BS' : 'Unknown')
-  const displayLocation = program.location || (isScraperProgram ? 'Location not specified' : 'Unknown Location')
-  const sourceLabel = isScraperProgram ? 'Public listing' : 'University source'
-  const sourceHint = isScraperProgram
-    ? 'Shown from a public admissions listing, not an official university submission.'
-    : 'Shown from the university record.'
-  const applyUrl = program.admissionPortalLink || program.officialUrl || program.universityWebsiteUrl
-  const websiteUrl = program.universityWebsiteUrl || program.officialUrl
-  const portalUrl = program.admissionPortalLink || program.officialUrl
-
-  const handleApplyNow = async () => {
-    if (!applyUrl) {
-      Alert.alert('Apply Now', 'Official application link is not available for this program yet.')
+  const toggleReminder = async () => {
+    const enable = !program.alertEnabled
+    setBusy('alert')
+    const ok = await setAlert(program.id, enable)
+    setBusy(null)
+    if (!ok) {
+      showErrorToast('Reminder not updated', 'Check your connection and try again.')
       return
     }
-
-    const canOpen = await Linking.canOpenURL(applyUrl)
-    if (!canOpen) {
-      Alert.alert('Apply Now', 'Unable to open the official application link on this device.')
-      return
-    }
-
-    await Linking.openURL(applyUrl)
+    showSuccessToast(enable ? 'Reminder on' : 'Reminder off', enable ? "We'll remind you 7, 3 and 1 day before the deadline." : 'You will not get deadline reminders for this program.')
     void trackCappedStudentActivitySafe({
-      activity_type: 'searched',
+      activity_type: 'alert',
       entity_type: 'admission',
       entity_id: program.id,
-      metadata: {
-        source: 'mobile_program_detail_apply',
-        official_url: applyUrl,
-      },
+      metadata: { source: 'mobile_program_detail', enabled: enable },
     })
-  }
-
-  const handleCompare = () => {
-    void trackCappedStudentActivitySafe({
-      activity_type: 'compared',
-      entity_type: 'admission',
-      entity_id: program.id,
-      metadata: {
-        source: 'mobile_program_detail',
-      },
-    })
-    navigation.navigate('StudentCompare', { ids: [program.id] })
-  }
-
-  const handleSetReminder = () => {
-    setReminderModalVisible(true)
-  }
-
-  const handleConfirmReminder = async () => {
-    const wasAlertEnabled = program.alertEnabled
-
-    if (!program.alertEnabled) {
-      await toggleAlert(program.id)
-    }
-
-    if (!wasAlertEnabled) {
-      void trackCappedStudentActivitySafe({
-        activity_type: 'alert',
-        entity_type: 'admission',
-        entity_id: program.id,
-        metadata: {
-          source: 'mobile_program_detail',
-          enabled: true,
-        },
-      })
-    }
-
-    Alert.alert(
-      'Reminder Enabled',
-      'This admission has been saved and deadline alerts are now enabled.',
-      [{ text: 'OK', style: 'default' }]
-    )
   }
 
   return (
-    <View style={styles.container}>
-      <TitleHeader title="Program Details" />
-
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          {/* Header Card */}
-          <View style={styles.headerCard}>
-            <Text style={styles.programTitle}>{program.program}</Text>
-            <Text style={styles.universityName}>{program.university}</Text>
-            
-            <View style={styles.headerMeta}>
-              <View style={styles.locationContainer}>
-                <Feather name="map-pin" size={16} color="#6B7280" style={styles.locationIcon} />
-                <Text style={styles.locationText}>{program.location}</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
-                <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
-                  {program.programStatus}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.actionButtons}>
-              <Pressable style={styles.actionButtonSecondary} onPress={handleCompare}>
-                <View style={styles.secondaryButtonContent}>
-                  <Feather name="shuffle" size={14} color="#374151" />
-                  <Text style={styles.actionButtonSecondaryText}>Compare</Text>
-                </View>
-              </Pressable>
-              <Pressable style={styles.actionButtonSecondary} onPress={handleSetReminder}>
-                <View style={styles.secondaryButtonContent}>
-                  <Feather name="bell" size={14} color="#374151" />
-                  <Text style={styles.actionButtonSecondaryText}>Reminder</Text>
-                </View>
-              </Pressable>
-            </View>
-
-            <Pressable style={styles.applyButton} onPress={handleApplyNow}>
-              <View style={styles.applyButtonContent}>
-                <Feather name="check" size={14} color="#FFFFFF" />
-                <Text style={styles.applyButtonText}>Apply Now</Text>
-              </View>
-            </Pressable>
-
-            <Text style={styles.lastUpdated}>Last Updated: {lastUpdatedDisplay}</Text>
-          </View>
-
-          {/* Tabs */}
-          <View style={styles.tabContainer}>
-            {(['Overview', 'Eligibility', 'Important Dates'] as const).map((tab) => {
-              const isActive = activeTab === tab
-              return (
-                <Pressable
-                  key={tab}
-                  onPress={() => setActiveTab(tab)}
-                  style={[styles.tab, isActive && styles.tabActive]}
-                >
-                  <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
-                </Pressable>
-              )
-            })}
-          </View>
-
-          {/* Tab Content */}
-          <View style={styles.tabContent}>
-            {activeTab === 'Overview' && (
-              <View>
-                <Text style={styles.sectionTitle}>Overview</Text>
-                
-                <View style={styles.overviewSection}>
-                  <Text style={styles.subsectionTitle}>Program Information</Text>
-                  <Text style={styles.descriptionText}>
-                    {program.program} at {program.university} is a {displayDegree} program located in {displayLocation}.
-                    {program.aiSummary && (
-                      <Text>{'\n\n'}{program.aiSummary}</Text>
-                    )}
-                  </Text>
-                </View>
-
-                <View style={styles.infoGrid}>
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoLabel}>Degree Type</Text>
-                    <Text style={styles.infoValue}>{displayDegree}</Text>
-                  </View>
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoLabel}>Location</Text>
-                    <Text style={styles.infoValue}>{displayLocation}</Text>
-                  </View>
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoLabel}>Deadline</Text>
-                    <Text style={styles.infoValue}>{program.deadlineDisplay}</Text>
-                  </View>
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoLabel}>Source</Text>
-                    <Text style={styles.infoValue}>{sourceLabel}</Text>
-                    <Text style={styles.sourceHint}>{sourceHint}</Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'Eligibility' && (
-              <View>
-                <Text style={styles.sectionTitle}>Eligibility Requirements</Text>
-
-                <View style={styles.overviewSection}>
-                  <Text style={styles.subsectionTitle}>Degree Type</Text>
-                  <Text style={styles.descriptionText}>{displayDegree}</Text>
-                </View>
-
-                <View style={styles.overviewSection}>
-                  <Text style={styles.subsectionTitle}>Source</Text>
-                  <Text style={styles.descriptionText}>{sourceLabel}</Text>
-                  <Text style={styles.sourceHint}>{sourceHint}</Text>
-                </View>
-
-                <View style={styles.overviewSection}>
-                  <Text style={styles.subsectionTitle}>General Requirements</Text>
-                  <Text style={styles.descriptionText}>
-                    {program.eligibility || 'Please contact the university directly for specific eligibility requirements and required documents for this program.'}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'Important Dates' && (
-              <View>
-                <Text style={styles.sectionTitle}>Important Dates</Text>
-                
-                <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Application Deadline</Text>
-                  <Text style={styles.dateValue}>{program.deadlineDisplay}</Text>
-                </View>
-
-                <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Days Remaining</Text>
-                  <Text style={[
-                    styles.dateValue, 
-                    styles.daysRemainingValue,
-                    { color: daysRemaining >= 0 && daysRemaining <= 7 ? '#EF4444' : daysRemaining >= 0 ? '#10B981' : '#6B7280' }
-                  ]}>
-                    {daysRemaining >= 0 ? `${daysRemaining} days` : 'Deadline passed'}
-                  </Text>
-                </View>
-
-                <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Last Updated</Text>
-                  <Text style={styles.dateValue}>{lastUpdatedDisplay}</Text>
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Official Links */}
-          <View style={styles.officialLinksCard}>
-            <Text style={styles.officialLinksTitle}>Official Links</Text>
-            {websiteUrl ? (
-              <Pressable 
-                style={styles.officialLinkButton}
-                onPress={() => Linking.openURL(websiteUrl)}
-              >
-                <Feather name="globe" size={16} color="#FFFFFF" style={styles.officialLinkButtonIcon} />
-                <Text style={styles.officialLinkButtonText}>University Website</Text>
-              </Pressable>
-            ) : null}
-
-            {portalUrl ? (
-              <Pressable
-                style={[styles.officialLinkButton, styles.portalLinkButton]}
-                onPress={() => Linking.openURL(portalUrl)}
-              >
-                <Feather name="external-link" size={16} color="#FFFFFF" style={styles.officialLinkButtonIcon} />
-                <Text style={styles.officialLinkButtonText}>Admission Portal Link</Text>
-              </Pressable>
-            ) : null}
-
-            {!websiteUrl && !portalUrl ? (
-              <View style={styles.noLinkCard}>
-                <Text style={styles.noLinkText}>
-                  Official links are not available. Please contact the university directly for more information.
+    <StudentScreen title="Program Details">
+      <View style={styles.headerCard}>
+        <View style={styles.universityRow}>
+          <UniversityAvatar name={program.university} size={44} />
+          <View style={styles.universityText}>
+            <Text style={styles.university} numberOfLines={2}>
+              {program.university}
+            </Text>
+            {program.location ? (
+              <View style={styles.locationRow}>
+                <Feather name="map-pin" size={12} color={colors.textMuted} />
+                <Text style={styles.location} numberOfLines={1}>
+                  {program.location}
                 </Text>
               </View>
             ) : null}
           </View>
         </View>
-      </ScrollView>
 
-      {/* Reminder Modal */}
-      <ReminderModal
-        visible={reminderModalVisible}
-        onClose={() => setReminderModalVisible(false)}
-        onSetReminder={handleConfirmReminder}
-        programName={program.program}
-        deadline={program.deadlineDisplay}
-      />
-    </View>
+        <Text style={styles.title}>{program.program}</Text>
+
+        <View style={styles.badges}>
+          <ProgramStatusBadge status={program.programStatus} />
+          <SourceBadge source={program.source} />
+        </View>
+
+        <View style={styles.deadlineBox}>
+          <Feather name="calendar" size={18} color={deadlineTone(program)} />
+          <View style={styles.deadlineText}>
+            <Text style={styles.deadlineLabel}>Application deadline</Text>
+            <Text style={styles.deadlineValue}>{program.deadlineDisplay}</Text>
+          </View>
+          <Text style={[styles.daysLeft, { color: deadlineTone(program) }]}>
+            {daysLeftLabel(program.daysRemaining, program.hasDeadline)}
+          </Text>
+        </View>
+
+        {link ? (
+          <Pressable style={styles.primary} onPress={() => void openUrl(link.url)} accessibilityRole="link" accessibilityLabel={link.label}>
+            <Feather name="external-link" size={16} color="#FFFFFF" />
+            <Text style={styles.primaryText}>{link.label}</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.noLink}>No official link was provided. Contact the university for application details.</Text>
+        )}
+
+        <View style={styles.actions}>
+          <ActionButton
+            icon="bookmark"
+            label={program.saved ? 'Saved' : 'Save'}
+            active={program.saved}
+            busy={busy === 'save'}
+            onPress={() => void toggleSave()}
+          />
+          <ActionButton
+            icon={program.alertEnabled ? 'bell' : 'bell-off'}
+            label={program.alertEnabled ? 'Reminder on' : 'Remind me'}
+            active={program.alertEnabled}
+            busy={busy === 'alert' || closed}
+            onPress={() => void toggleReminder()}
+          />
+          <ActionButton icon="shuffle" label="Compare" onPress={() => navigation.navigate('StudentCompare', { ids: [program.id] })} />
+        </View>
+      </View>
+
+      <Section title={program.source === 'university' ? 'About this program' : 'About this admission'}>
+        {program.description ? (
+          <Text style={styles.paragraph}>{program.description}</Text>
+        ) : (
+          <Text style={styles.muted}>
+            {program.source === 'scraper'
+              ? 'This admission was collected from the university’s public announcement, which does not include a program description.'
+              : 'The university has not added a description yet.'}
+          </Text>
+        )}
+      </Section>
+
+      {program.programsOffered.length > 0 ? (
+        <Section title={`Programs in this admission (${program.programsOffered.length})`}>
+          <View style={styles.programList}>
+            {program.programsOffered.map((name) => (
+              <View key={name} style={styles.programItem}>
+                <Feather name="check" size={14} color={colors.primary} />
+                <Text style={styles.programName}>{name}</Text>
+              </View>
+            ))}
+          </View>
+        </Section>
+      ) : null}
+
+      <Section title="Key details">
+        <View style={styles.facts}>
+          <Fact label="Degree" value={program.degree} />
+          <Fact label="Application fee" value={program.fee === 'Not specified' ? null : program.fee} />
+          <Fact label="Field of study" value={program.fieldOfStudy} />
+          <Fact label="Program type" value={program.programType} />
+          <Fact label="Duration" value={program.duration} />
+          <Fact label="Study mode" value={program.deliveryMode} />
+        </View>
+      </Section>
+
+      <Section title="Eligibility">
+        {program.eligibility ? (
+          <Text style={styles.paragraph}>{program.eligibility}</Text>
+        ) : (
+          <Text style={styles.muted}>Eligibility criteria were not provided. Check the official page before applying.</Text>
+        )}
+      </Section>
+
+      <Section title="Source">
+        <SourceBadge source={program.source} />
+        <Text style={[styles.muted, styles.sourceHint]}>{SOURCE_HINT[program.source]}</Text>
+        <Text style={styles.updated}>Last updated {formatDateTime(program.updatedAt)}</Text>
+        {program.websiteUrl && program.websiteUrl !== link?.url ? (
+          <Pressable style={styles.secondaryLink} onPress={() => void openUrl(program.websiteUrl as string)} accessibilityRole="link" accessibilityLabel="University website">
+            <Feather name="globe" size={14} color={colors.primary} />
+            <Text style={styles.secondaryLinkText}>University website</Text>
+          </Pressable>
+        ) : null}
+        {program.announcementUrl && program.announcementUrl !== link?.url ? (
+          <Pressable style={styles.secondaryLink} onPress={() => void openUrl(program.announcementUrl as string)} accessibilityRole="link" accessibilityLabel="Official announcement">
+            <Feather name="file-text" size={14} color={colors.primary} />
+            <Text style={styles.secondaryLinkText}>Official announcement</Text>
+          </Pressable>
+        ) : null}
+      </Section>
+    </StudentScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
+  center: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
+    justifyContent: 'center',
   },
   headerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
-  programTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  universityName: {
-    fontSize: 18,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  headerMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  locationContainer: {
+  universityRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
   },
-  locationIcon: {
-    marginRight: 8,
-  },
-  locationText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 9999,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  actionButtonSecondary: {
+  universityText: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginRight: 8,
-    alignItems: 'center',
+    minWidth: 0,
+    gap: 2,
   },
-  secondaryButtonContent: {
+  university: {
+    fontSize: font.body,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
   },
-  actionButtonSecondaryText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  applyButton: {
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  applyButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  applyButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
-  },
-  lastUpdated: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tab: {
+  location: {
     flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 6,
+    fontSize: font.small,
+    color: colors.textMuted,
   },
-  tabActive: {
-    backgroundColor: '#2563EB',
+  title: {
+    fontSize: font.display,
+    lineHeight: 28,
+    fontWeight: '700',
+    color: colors.text,
   },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-  },
-  tabContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
-  },
-  overviewSection: {
-    marginBottom: 16,
-  },
-  subsectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  descriptionText: {
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
-  },
-  infoGrid: {
+  badges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -4,
-    marginTop: 0,
+    gap: spacing.sm,
   },
-  infoCard: {
-    width: '50%',
-    padding: 4,
-    marginBottom: 8,
+  deadlineBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
   },
-  infoCardInner: {
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    borderRadius: 8,
+  deadlineText: {
+    flex: 1,
   },
-  infoLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    borderRadius: 8,
+  deadlineLabel: {
+    fontSize: font.small,
+    color: colors.textMuted,
   },
-  infoValue: {
-    fontSize: 14,
+  deadlineValue: {
+    fontSize: font.title,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.text,
+  },
+  daysLeft: {
+    fontSize: font.small,
+    fontWeight: '700',
+  },
+  primary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    minHeight: 46,
+  },
+  primaryText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: font.body,
+  },
+  noLink: {
+    fontSize: font.small,
+    color: colors.textMuted,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  action: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+  },
+  actionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  actionText: {
+    fontSize: font.small,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  actionTextActive: {
+    color: colors.primary,
+  },
+  paragraph: {
+    fontSize: font.body,
+    lineHeight: 21,
+    color: colors.textSecondary,
+  },
+  muted: {
+    fontSize: font.body,
+    lineHeight: 20,
+    color: colors.textMuted,
+  },
+  programList: {
+    gap: spacing.sm,
+  },
+  programItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  programName: {
+    flex: 1,
+    fontSize: font.body,
+    color: colors.textSecondary,
+  },
+  facts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.md,
+  },
+  fact: {
+    width: '48%',
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 2,
+  },
+  factLabel: {
+    fontSize: font.caption,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  factValue: {
+    fontSize: font.body,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  factMissing: {
+    fontWeight: '400',
+    color: colors.textFaint,
   },
   sourceHint: {
-    marginTop: 4,
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#6B7280',
+    marginTop: spacing.sm,
   },
-  eligibilityCard: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
+  updated: {
+    fontSize: font.small,
+    color: colors.textFaint,
+    marginTop: spacing.sm,
   },
-  dateRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  dateLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  dateValue: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  daysRemainingValue: {
-    fontWeight: '600',
-  },
-  officialLinksCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  officialLinksTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  officialLinkButton: {
+  secondaryLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  officialLinkButtonIcon: {
-    marginRight: 8,
-  },
-  officialLinkButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
-  },
-  portalLinkButton: {
-    marginTop: 8,
-    backgroundColor: '#10B981',
-  },
-  noLinkCard: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 8,
-  },
-  noLinkText: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorIcon: {
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 18,
+  secondaryLinkText: {
+    fontSize: font.body,
     fontWeight: '600',
-    color: '#111827',
-    marginBottom: 24,
-  },
-  errorButton: {
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  errorButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.primary,
   },
 })

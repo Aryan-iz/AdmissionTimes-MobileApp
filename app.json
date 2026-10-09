@@ -31,7 +31,7 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/favicon.svg",
+      "favicon": "./assets/app-icon.png",
       "themeColor": "#2563EB",
       "backgroundColor": "#F9FAFB"
     },
