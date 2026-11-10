@@ -49,35 +49,29 @@ interface AiHealthResponse {
   ready: boolean;
 }
 
-/** Align request shape with web frontend (history in context + conversation_history). */
+/** Same request shape as the web app: page context + conversation_history (each sent once). */
 export const aiService = {
   chat: async (
     message: string,
     conversationContext?: string,
     history?: ChatHistoryEntry[] | ChatHistoryMessage[]
   ): Promise<ApiResponse<AiChatResponse>> => {
-    let fullContext = conversationContext || '';
-    const normalizedHistory = (history || []).map((entry) => ({
-      role: entry.role === 'ai' ? ('assistant' as const) : entry.role === 'user' ? ('user' as const) : ('assistant' as const),
-      text: entry.text.slice(0, 500),
-    }));
-
-    if (normalizedHistory.length > 0) {
-      const historyStr = normalizedHistory
-        .slice(-8)
-        .map((h) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text.slice(0, 200)}`)
-        .join('\n');
-      fullContext = fullContext
-        ? `${fullContext}\nRecent messages:\n${historyStr}`
-        : `Recent messages:\n${historyStr}`;
-    }
+    // The backend merges the page context with the history; pasting the
+    // history into the context as well made the model see every message twice.
+    const normalizedHistory = (history || [])
+      .map((entry) => ({
+        role: entry.role === 'user' ? ('user' as const) : ('assistant' as const),
+        text: entry.text.trim().slice(0, 500),
+      }))
+      .filter((entry) => entry.text)
+      .slice(-8);
 
     const response = await apiClient.post(
       '/ai/chat',
       {
         message,
-        conversation_context: fullContext.slice(0, 3000) || undefined,
-        conversation_history: normalizedHistory.slice(-8),
+        conversation_context: conversationContext?.trim().slice(0, 3000) || undefined,
+        conversation_history: normalizedHistory.length ? normalizedHistory : undefined,
       },
       { timeout: 60000 }
     );

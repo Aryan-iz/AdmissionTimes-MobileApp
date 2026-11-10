@@ -14,7 +14,7 @@
 
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { authService, supabase, signOutUser, onAuthStateChange } from '../services'
+import { authService, supabase, signOutUser, onAuthStateChange, releasePushTokenForSignOut } from '../services'
 import { resetStudentSession } from './sessionCleanup'
 import type { User } from '../services/types'
 import { createLogger } from '../utils/logger'
@@ -350,6 +350,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       set({ isLoading: true })
 
       log.debug('Signing out user...')
+
+      // Stop pushes to this device while the request can still authenticate.
+      await releasePushTokenForSignOut().catch((error) => log.warn('Could not unregister push token:', error))
 
       // Sign out from Supabase
       await signOutUser()

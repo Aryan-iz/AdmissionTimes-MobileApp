@@ -33,7 +33,7 @@ export const notificationsService = {
    * @returns Promise resolving to paginated notifications list
    */
   list: async (params?: {
-    category?: string;
+    notification_type?: string;
     priority?: string;
     is_read?: boolean;
     page?: number;
@@ -79,7 +79,7 @@ export const notificationsService = {
    * 
    * @returns Promise resolving to update count
    */
-  markAllAsRead: async (): Promise<ApiResponse<{ updated_count: number }>> => {
+  markAllAsRead: async (): Promise<ApiResponse<{ count: number }>> => {
     log.debug('Marking all notifications as read');
     const response = await apiClient.patch('/notifications/read-all');
     return response.data;
@@ -92,7 +92,7 @@ export const notificationsService = {
    * 
    * @returns Promise resolving to unread count
    */
-  getUnreadCount: async (): Promise<ApiResponse<{ unread_count: number }>> => {
+  getUnreadCount: async (): Promise<ApiResponse<{ count: number }>> => {
     log.debug('Fetching unread count');
     const response = await apiClient.get('/notifications/unread-count');
     return response.data;

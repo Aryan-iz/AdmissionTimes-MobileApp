@@ -22,6 +22,8 @@ export {
 	addForegroundNotificationListener,
 	addNotificationResponseListener,
 	showLocalNotification,
+	rememberRegisteredPushToken,
+	releasePushTokenForSignOut,
 } from './pushNotifications';
 
 // Export types

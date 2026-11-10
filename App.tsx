@@ -41,6 +41,7 @@ import {
   addForegroundNotificationListener,
   addNotificationResponseListener,
   showLocalNotification,
+  rememberRegisteredPushToken,
 } from './src/services/pushNotifications'
 import { subscribeToStudentNotificationInserts } from './src/realtime/notificationsSubscription'
 import { notificationsService } from './src/services/notificationsService'
@@ -165,14 +166,9 @@ function AppNavigationHost() {
     const currentStudentUserId = user?.role === 'student' ? user.id : null
     const previousStudentUserId = previousStudentUserIdRef.current
 
+    // Sign-out unregisters the token itself (authStore.signOut) while the
+    // session is still valid; here we only forget what was registered.
     if (previousStudentUserId && previousStudentUserId !== currentStudentUserId) {
-      notificationsService
-        .unregisterPushToken({ expo_push_token: expoPushToken })
-        .catch((error) => {
-          if (__DEV__) {
-            log.warn('Failed to unregister push token:', error)
-          }
-        })
       registeredTokenKeyRef.current = null
     }
 
@@ -194,6 +190,7 @@ function AppNavigationHost() {
       })
       .then(() => {
         registeredTokenKeyRef.current = tokenKey
+        rememberRegisteredPushToken(expoPushToken)
       })
       .catch((error) => {
         if (__DEV__) {

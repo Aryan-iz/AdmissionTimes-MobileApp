@@ -31,54 +31,6 @@ export function formatAiChatAnswer(data: AiChatResponse): string {
   return 'No response was generated. Please try again.'
 }
 
-export function isRefusalReply(text: string): boolean {
-  const lower = text.toLowerCase()
-  return (
-    lower.includes('i can only help with') ||
-    lower.includes('i cannot assist') ||
-    lower.includes('cannot manage') ||
-    lower.includes('i cannot access') ||
-    lower.includes('sensitive information')
-  )
-}
-
-export function buildGuidanceResponse(query: string): string {
-  const lower = query.toLowerCase()
-
-  if (lower.includes('compare')) {
-    return [
-      'To compare universities:',
-      '- Save programs you like first.',
-      '- Open Compare and select at least two programs.',
-      '- Review fee, deadline, and eligibility side by side.',
-    ].join('\n')
-  }
-
-  if (lower.includes('alert') || lower.includes('watchlist')) {
-    return [
-      'To manage watchlist and alerts:',
-      '- Open Watchlist and enable reminders for important programs.',
-      '- Check Deadlines for urgent items each week.',
-    ].join('\n')
-  }
-
-  if (lower.includes('status') || lower.includes('verified') || lower.includes('eligibility')) {
-    return [
-      'Admission statuses:',
-      '- Verified: approved listing, safe to trust.',
-      '- Pending: still under review.',
-      '- Open a program for full eligibility details.',
-    ].join('\n')
-  }
-
-  return [
-    'I can help you:',
-    '- Find programs by city or degree',
-    '- Compare saved programs',
-    '- Track upcoming deadlines',
-  ].join('\n')
-}
-
 export function getAiErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<{ message?: string }>
   const status = axiosError.response?.status
@@ -101,8 +53,9 @@ export function getAiErrorMessage(error: unknown): string {
   return 'I could not reach the AI assistant. Check your connection and try again.'
 }
 
+/** Worth one retry. 429 is our own per-user rate limit: retrying only hits it again. */
 export function isTransientStatus(status?: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504
+  return status === 502 || status === 503 || status === 504
 }
 
 export function getQuickActionsForContext(context: string): string[] {

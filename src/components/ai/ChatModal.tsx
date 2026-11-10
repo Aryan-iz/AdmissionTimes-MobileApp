@@ -7,12 +7,10 @@ import aiService, { type AiChatResponse } from '../../services/aiService'
 import { navigationRef } from '../../navigation/navigationRef'
 import { formatShortDate } from '../../domain/dates'
 import {
-  buildGuidanceResponse,
   buildHistoryFromModalMessages,
   formatAiChatAnswer,
   getAiErrorMessage,
   getQuickActionsForContext,
-  isRefusalReply,
   isTransientStatus,
 } from '../../utils/aiChatUtils'
 
@@ -64,7 +62,6 @@ export default function ChatModal() {
       }
       return 'I could not generate a response right now. Please try again with a more specific question.'
     }
-    if (isRefusalReply(answer)) return buildGuidanceResponse(query)
     return answer
   }
 

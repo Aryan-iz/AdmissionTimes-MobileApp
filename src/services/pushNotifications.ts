@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 import Constants from 'expo-constants'
 import type { Notification, NotificationResponse } from 'expo-notifications'
 import { createLogger } from '../utils/logger'
+import { notificationsService } from './notificationsService'
 
 const log = createLogger('pushNotifications')
 
@@ -90,6 +91,25 @@ const getNotificationsModule = async (): Promise<NotificationsModule | null> => 
   }
 
   return notificationsModulePromise
+}
+
+/** The Expo token currently registered with the backend for the signed-in student. */
+let registeredPushToken: string | null = null
+
+export const rememberRegisteredPushToken = (token: string | null): void => {
+  registeredPushToken = token
+}
+
+/**
+ * Detach this device from the account. Must run BEFORE the session is cleared:
+ * the request needs the user's auth token, and without it the device kept
+ * receiving the previous student's pushes after sign-out.
+ */
+export const releasePushTokenForSignOut = async (): Promise<void> => {
+  const token = registeredPushToken
+  registeredPushToken = null
+  if (!token) return
+  await notificationsService.unregisterPushToken({ expo_push_token: token })
 }
 
 const noopSubscription = {
