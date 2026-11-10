@@ -120,6 +120,7 @@ export interface Admission {
   university_website_url?: string | null;
   admission_portal_url?: string | null;
   source_announcement_url?: string | null;
+  source_announcement_title?: string | null;
   primary_apply_url?: string | null;
   programs_offered?: string[];
   status_label?: 'Verified' | 'Pending' | 'Closed' | 'Draft';

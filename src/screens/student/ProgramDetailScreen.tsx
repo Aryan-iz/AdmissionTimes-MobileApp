@@ -282,6 +282,9 @@ export default function ProgramDetailScreen() {
 
       <Section title="Source">
         <SourceBadge source={program.source} />
+        {program.sourceAnnouncementTitle ? (
+          <Text style={[styles.muted, styles.sourceHint]}>Listed in “{program.sourceAnnouncementTitle}”</Text>
+        ) : null}
         <Text style={[styles.muted, styles.sourceHint]}>{SOURCE_HINT[program.source]}</Text>
         <Text style={styles.updated}>Last updated {formatDateTime(program.updatedAt)}</Text>
         {program.websiteUrl && program.websiteUrl !== link?.url ? (
