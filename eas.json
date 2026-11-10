@@ -11,13 +11,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "API_BASE_URL": "https://admissiontimes-api.onrender.com/api/v1"
+        "API_BASE_URL": "https://admissiontimes-api.vercel.app/api/v1"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "API_BASE_URL": "https://admissiontimes-api.onrender.com/api/v1"
+        "API_BASE_URL": "https://admissiontimes-api.vercel.app/api/v1"
       }
     }
   },
