@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', '.expo/**', 'dist/**', 'web-build/**', 'babel.config.js', 'metro.config.js', 'index.js'] },
+  { ignores: ['node_modules/**', '.expo/**', 'dist/**', 'web-build/**', 'babel.config.js', 'metro.config.js', 'app.config.js', 'index.js'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
