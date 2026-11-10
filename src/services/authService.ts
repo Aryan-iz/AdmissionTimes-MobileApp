@@ -12,6 +12,9 @@
 
 import apiClient from './apiClient';
 import { ApiResponse, User, SignInData, SignUpData, AuthResponse } from './types';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('authService')
 
 export const authService = {
   /**
@@ -24,7 +27,7 @@ export const authService = {
    * @returns Promise resolving to user data
    */
   signUp: async (data: SignUpData): Promise<ApiResponse<AuthResponse>> => {
-    console.log('🔐 [authService] Signing up user:', data.email);
+    log.debug('Signing up user');
     const response = await apiClient.post('/auth/signup', data);
     return response.data;
   },
@@ -42,7 +45,7 @@ export const authService = {
    * @returns Promise resolving to user data
    */
   signIn: async (data: SignInData): Promise<ApiResponse<AuthResponse>> => {
-    console.log('🔐 [authService] Signing in user:', data.email);
+    log.debug('Signing in user');
     const response = await apiClient.post('/auth/signin', data);
     return response.data;
   },
@@ -55,7 +58,7 @@ export const authService = {
    * @returns Promise resolving to success response
    */
   signOut: async (): Promise<ApiResponse<void>> => {
-    console.log('🔐 [authService] Signing out user');
+    log.debug('Signing out user');
     const response = await apiClient.post('/auth/signout');
     return response.data;
   },
@@ -69,7 +72,7 @@ export const authService = {
    * @returns Promise resolving to current user data
    */
   getCurrentUser: async (): Promise<ApiResponse<User>> => {
-    console.log('🔐 [authService] Fetching current user');
+    log.debug('Fetching current user');
     const response = await apiClient.get('/auth/me');
     return response.data;
   },

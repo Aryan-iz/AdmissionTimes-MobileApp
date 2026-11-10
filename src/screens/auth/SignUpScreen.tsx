@@ -23,6 +23,12 @@ import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store'
 import { BrandMark, CustomLoader } from '../../components/ui'
 import { showAuthErrorToast, showInfoToast, showSuccessToast } from '../../services/toast'
+import { createLogger } from '../../utils/logger'
+
+/** Same rule as the web app (sign-up, reset and change-password). */
+const MIN_PASSWORD_LENGTH = 8
+
+const log = createLogger('SignUpScreen')
 
 export default function SignUpScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -70,8 +76,8 @@ export default function SignUpScreen() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required'
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters'
+    } else if (formData.password.length < MIN_PASSWORD_LENGTH) {
+      newErrors.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
     }
 
     if (!formData.confirmPassword) {
@@ -91,7 +97,7 @@ export default function SignUpScreen() {
     }
 
     try {
-      console.log('[SignUp] Starting signup with:', { 
+      log.debug('Starting signup with:', { 
         email: formData.email.trim(),
         user_type: 'student',
       })
@@ -109,21 +115,21 @@ export default function SignUpScreen() {
             navigation.navigate('Login')
           },
           onError: (errorMessage: string) => {
-            console.error('[SignUp] Error:', errorMessage)
+            log.error('Error:', errorMessage)
             showAuthErrorToast('Sign up failed', errorMessage)
           },
         }
       )
 
-      console.log('[SignUp] Signup successful!')
+      log.debug('Signup successful!')
     } catch (error: any) {
-      console.error('[SignUp] Error occurred:', error)
+      log.error('Error occurred:', error)
 
       const errorMessage = 
         error?.message || 
         'Failed to create account. Please try again.'
 
-      console.error('[SignUp] Error message:', errorMessage)
+      log.error('Error message:', errorMessage)
       showAuthErrorToast('Sign up failed', errorMessage)
     }
   }
@@ -191,7 +197,7 @@ export default function SignUpScreen() {
                   style={[styles.input, errors.password && styles.inputError]}
                   value={formData.password}
                   onChangeText={(value) => handleChange('password', value)}
-                  placeholder="At least 6 characters"
+                  placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
                   editable={!isLoading}

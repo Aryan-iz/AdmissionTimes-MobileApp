@@ -7,6 +7,9 @@
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('env')
 
 interface Config {
   apiBaseUrl: string;
@@ -30,7 +33,7 @@ const getEnvVar = (key: string, defaultValue?: string): string => {
     return defaultValue;
   }
   
-  console.warn(`⚠️ Environment variable ${key} is not set`);
+  log.warn(`Environment variable ${key} is not set`);
   return '';
 };
 
@@ -93,7 +96,7 @@ const getValidatedApiBaseUrl = (): string | undefined => {
 
   if (!explicitHost) {
     if (__DEV__) {
-      console.warn(`⚠️ [Config] Ignoring invalid API_BASE_URL override: ${explicitApiBaseUrl}`);
+      log.warn(`Ignoring invalid API_BASE_URL override: ${explicitApiBaseUrl}`);
     }
     return undefined;
   }
@@ -107,8 +110,8 @@ const getValidatedApiBaseUrl = (): string | undefined => {
   }
 
   if (__DEV__) {
-    console.warn(
-      `⚠️ [Config] Ignoring stale API_BASE_URL override for web: ${explicitApiBaseUrl}. Using browser host ${browserHost} instead.`
+    log.warn(
+      `Ignoring stale API_BASE_URL override for web: ${explicitApiBaseUrl}. Using browser host ${browserHost} instead.`
     );
   }
 
@@ -143,7 +146,7 @@ const resolveDefaultApiBaseUrl = (): string => {
 // Release builds have no Metro host to derive the API from; API_BASE_URL
 // (app.json "extra" or an EAS env) must point at the deployed backend.
 if (!__DEV__ && !getOptionalEnvVar('API_BASE_URL')) {
-  console.error('❌ [Config] API_BASE_URL is not set for this release build; API calls will fail.');
+  log.error('API_BASE_URL is not set for this release build; API calls will fail.');
 }
 
 export const config: Config = {
@@ -157,11 +160,11 @@ export const config: Config = {
 
 // Log configuration in development
 if (__DEV__) {
-  console.log('📋 [Config] Environment configuration loaded:');
-  console.log('  API Base URL:', config.apiBaseUrl);
-  console.log('  Supabase URL:', config.supabaseUrl ? '✅ Set' : '❌ Not Set');
-  console.log('  Supabase Anon Key:', config.supabaseAnonKey ? '✅ Set' : '❌ Not Set');
-  console.log('  Debug API:', config.debugApi);
-  console.log('  Enable Realtime:', config.enableRealtime);
-  console.log('  Enable Push Notifications:', config.enablePushNotifications);
+  log.debug('Environment configuration loaded:');
+  log.debug('  API Base URL:', config.apiBaseUrl);
+  log.debug('  Supabase URL:', config.supabaseUrl ? '✅ Set' : '❌ Not Set');
+  log.debug('  Supabase Anon Key:', config.supabaseAnonKey ? '✅ Set' : '❌ Not Set');
+  log.debug('  Debug API:', config.debugApi);
+  log.debug('  Enable Realtime:', config.enableRealtime);
+  log.debug('  Enable Push Notifications:', config.enablePushNotifications);
 }

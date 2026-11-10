@@ -11,6 +11,9 @@
 
 import apiClient from './apiClient';
 import { ApiResponse, PaginatedResponse, Watchlist } from './types';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('watchlistsService')
 
 export const watchlistsService = {
   /**
@@ -26,7 +29,7 @@ export const watchlistsService = {
     page?: number;
     limit?: number;
   }): Promise<PaginatedResponse<Watchlist>> => {
-    console.log('🔖 [watchlistsService] Fetching watchlist');
+    log.debug('Fetching watchlist');
     const response = await apiClient.get('/watchlists', { params });
     return response.data;
   },
@@ -40,7 +43,7 @@ export const watchlistsService = {
    * @returns Promise resolving to watchlist item
    */
   getById: async (id: string): Promise<ApiResponse<Watchlist>> => {
-    console.log('🔖 [watchlistsService] Fetching watchlist item:', id);
+    log.debug('Fetching watchlist item:', id);
     const response = await apiClient.get(`/watchlists/${id}`);
     return response.data;
   },
@@ -55,7 +58,7 @@ export const watchlistsService = {
    * @returns Promise resolving to created watchlist item
    */
   add: async (admissionId: string, alertOptIn: boolean = false): Promise<ApiResponse<Watchlist>> => {
-    console.log('🔖 [watchlistsService] Adding to watchlist:', admissionId);
+    log.debug('Adding to watchlist:', admissionId);
     const response = await apiClient.post('/watchlists', {
       admission_id: admissionId,
       alert_opt_in: alertOptIn,
@@ -72,7 +75,7 @@ export const watchlistsService = {
    * @returns Promise resolving to success response
    */
   remove: async (id: string): Promise<ApiResponse<void>> => {
-    console.log('🔖 [watchlistsService] Removing from watchlist:', id);
+    log.debug('Removing from watchlist:', id);
     const response = await apiClient.delete(`/watchlists/${id}`);
     return response.data;
   },
@@ -86,7 +89,7 @@ export const watchlistsService = {
    * @returns Promise resolving to success response
    */
   removeByAdmissionId: async (admissionId: string): Promise<ApiResponse<void>> => {
-    console.log('🔖 [watchlistsService] Removing by admission ID:', admissionId);
+    log.debug('Removing by admission ID:', admissionId);
     const response = await apiClient.delete(`/watchlists/admission/${admissionId}`);
     return response.data;
   },
@@ -101,7 +104,7 @@ export const watchlistsService = {
    * @returns Promise resolving to updated watchlist item
    */
   update: async (id: string, data: Partial<Watchlist>): Promise<ApiResponse<Watchlist>> => {
-    console.log('🔖 [watchlistsService] Updating watchlist item:', id);
+    log.debug('Updating watchlist item:', id);
     const response = await apiClient.patch(`/watchlists/${id}`, data);
     return response.data;
   },
@@ -115,7 +118,7 @@ export const watchlistsService = {
    * @returns Promise resolving to updated watchlist item
    */
   toggleAlert: async (id: string): Promise<ApiResponse<Watchlist>> => {
-    console.log('🔖 [watchlistsService] Toggling alert for:', id);
+    log.debug('Toggling alert for:', id);
     const response = await apiClient.patch(`/watchlists/${id}/toggle-alert`);
     return response.data;
   },

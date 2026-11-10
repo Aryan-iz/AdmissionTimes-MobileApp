@@ -14,6 +14,8 @@ export const resetStudentSession = (): void => {
 }
 
 export const getAuthUserId = (): string | null => {
+  // Lazy require breaks the authStore <-> studentStore import cycle (see top of file).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useAuthStore } = require('./authStore') as typeof import('./authStore')
   return useAuthStore.getState().user?.id || null
 }

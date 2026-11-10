@@ -2,6 +2,9 @@ import apiClient from './apiClient'
 import type { ApiResponse } from './types'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuthStore } from '../store/authStore'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('activityService')
 
 const STUDENT_EVENT_CAP_STORAGE_KEY = 'admissionTimes.mobile.student.eventCaps.v1'
 
@@ -80,7 +83,7 @@ export const trackActivitySafe = async (payload: TrackActivityPayload): Promise<
     await activityService.track(payload)
   } catch (error) {
     if (__DEV__) {
-      console.warn('⚠️ [activityService] Failed to track activity:', payload.activity_type, payload.entity_id, error)
+      log.warn('Failed to track activity:', payload.activity_type, payload.entity_id, error)
     }
   }
 }
@@ -93,7 +96,7 @@ export const trackCappedStudentActivitySafe = async (payload: TrackActivityPaylo
     await activityService.track(payload)
   } catch (error) {
     if (__DEV__) {
-      console.warn('⚠️ [activityService] Failed to track capped activity:', payload.activity_type, payload.entity_id, error)
+      log.warn('Failed to track capped activity:', payload.activity_type, payload.entity_id, error)
     }
   }
 }

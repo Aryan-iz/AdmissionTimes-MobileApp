@@ -24,6 +24,9 @@ import { useAuthStore, useStudentStore } from '../../store'
 import { BrandMark } from '../../components/ui'
 import type { RootStackParamList } from '../../navigation/AppNavigator'
 import { showAuthErrorToast, showInfoToast } from '../../services/toast'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('LoginScreen')
 
 export default function LoginScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
@@ -55,13 +58,13 @@ export default function LoginScreen() {
             // Navigation is handled by AppNavigator reacting to auth state
           },
           onError: (errorMessage) => {
-            console.error('Login error:', errorMessage)
+            log.error('Login error:', errorMessage)
             showAuthErrorToast('Sign in failed', errorMessage)
           },
         }
       )
     } catch (error) {
-      console.error('Login error:', error)
+      log.error('Login error:', error)
       showAuthErrorToast('Sign in failed', 'Unable to sign in right now. Please try again.')
     }
   }

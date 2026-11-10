@@ -11,6 +11,9 @@
 
 import apiClient from './apiClient';
 import { ApiResponse, PaginatedResponse, Notification } from './types';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('notificationsService')
 
 type PushPlatform = 'ios' | 'android' | 'web';
 
@@ -36,7 +39,7 @@ export const notificationsService = {
     page?: number;
     limit?: number;
   }): Promise<PaginatedResponse<Notification>> => {
-    console.log('🔔 [notificationsService] Fetching notifications');
+    log.debug('Fetching notifications');
     const response = await apiClient.get('/notifications', { params });
     return response.data;
   },
@@ -50,7 +53,7 @@ export const notificationsService = {
    * @returns Promise resolving to notification data
    */
   getById: async (id: string): Promise<ApiResponse<Notification>> => {
-    console.log('🔔 [notificationsService] Fetching notification:', id);
+    log.debug('Fetching notification:', id);
     const response = await apiClient.get(`/notifications/${id}`);
     return response.data;
   },
@@ -64,7 +67,7 @@ export const notificationsService = {
    * @returns Promise resolving to updated notification
    */
   markAsRead: async (id: string): Promise<ApiResponse<Notification>> => {
-    console.log('🔔 [notificationsService] Marking notification as read:', id);
+    log.debug('Marking notification as read:', id);
     const response = await apiClient.patch(`/notifications/${id}/read`);
     return response.data;
   },
@@ -77,7 +80,7 @@ export const notificationsService = {
    * @returns Promise resolving to update count
    */
   markAllAsRead: async (): Promise<ApiResponse<{ updated_count: number }>> => {
-    console.log('🔔 [notificationsService] Marking all notifications as read');
+    log.debug('Marking all notifications as read');
     const response = await apiClient.patch('/notifications/read-all');
     return response.data;
   },
@@ -90,7 +93,7 @@ export const notificationsService = {
    * @returns Promise resolving to unread count
    */
   getUnreadCount: async (): Promise<ApiResponse<{ unread_count: number }>> => {
-    console.log('🔔 [notificationsService] Fetching unread count');
+    log.debug('Fetching unread count');
     const response = await apiClient.get('/notifications/unread-count');
     return response.data;
   },
@@ -104,19 +107,19 @@ export const notificationsService = {
    * @returns Promise resolving to success response
    */
   delete: async (id: string): Promise<ApiResponse<void>> => {
-    console.log('🔔 [notificationsService] Deleting notification:', id);
+    log.debug('Deleting notification:', id);
     const response = await apiClient.delete(`/notifications/${id}`);
     return response.data;
   },
 
   registerPushToken: async (payload: PushTokenPayload): Promise<ApiResponse<{ id: string }>> => {
-    console.log('🔔 [notificationsService] Registering push token');
+    log.debug('Registering push token');
     const response = await apiClient.post('/notifications/push-token', payload);
     return response.data;
   },
 
   unregisterPushToken: async (payload: { expo_push_token: string }): Promise<ApiResponse<void>> => {
-    console.log('🔔 [notificationsService] Unregistering push token');
+    log.debug('Unregistering push token');
     const response = await apiClient.delete('/notifications/push-token', { data: payload });
     return response.data;
   },

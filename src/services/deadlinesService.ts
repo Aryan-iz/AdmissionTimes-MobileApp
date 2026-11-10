@@ -11,6 +11,9 @@
 
 import apiClient from './apiClient';
 import { ApiResponse, PaginatedResponse, Deadline } from './types';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('deadlinesService')
 
 export const deadlinesService = {
   /**
@@ -29,7 +32,7 @@ export const deadlinesService = {
     page?: number;
     limit?: number;
   }): Promise<PaginatedResponse<Deadline>> => {
-    console.log('📅 [deadlinesService] Fetching deadlines');
+    log.debug('Fetching deadlines');
     const response = await apiClient.get('/deadlines', { params });
     return response.data;
   },
@@ -43,7 +46,7 @@ export const deadlinesService = {
    * @returns Promise resolving to deadline
    */
   getById: async (id: string): Promise<ApiResponse<Deadline>> => {
-    console.log('📅 [deadlinesService] Fetching deadline:', id);
+    log.debug('Fetching deadline:', id);
     const response = await apiClient.get(`/deadlines/${id}`);
     return response.data;
   },
@@ -57,7 +60,7 @@ export const deadlinesService = {
    * @returns Promise resolving to upcoming deadlines
    */
   getUpcoming: async (days: number = 30): Promise<ApiResponse<Deadline[]>> => {
-    console.log('📅 [deadlinesService] Fetching upcoming deadlines (next', days, 'days)');
+    log.debug('Fetching upcoming deadlines (next', days, 'days)');
     const response = await apiClient.get('/deadlines/upcoming', { params: { days } });
     return response.data;
   },

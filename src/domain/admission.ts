@@ -38,6 +38,7 @@ export interface StudentAdmission {
   location: string | null
   city: string | null
   eligibility: string | null
+  academicYear: string | null
 
   applyUrl: string | null
   websiteUrl: string | null
@@ -99,6 +100,7 @@ export const toStudentAdmission = (admission: Admission): StudentAdmission => {
     location: text(admission.location_display) ?? text(admission.location) ?? text(admission.university_city),
     city: text(admission.university_city),
     eligibility: text(admission.eligibility_text),
+    academicYear: text(admission.academic_year),
 
     applyUrl: text(admission.primary_apply_url),
     websiteUrl: text(admission.university_website_url),
