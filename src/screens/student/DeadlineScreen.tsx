@@ -49,7 +49,7 @@ export default function DeadlineScreen() {
     const limit = RANGES.find((r) => r.value === range)?.days ?? null
     const pool = savedOnly ? admissions.filter((a) => a.saved) : admissions
     // admissions are already sorted: open by soonest deadline, then closed by most recent.
-    const open = pool.filter((a) => isOpen(a) && (limit === null || (a.hasDeadline && a.daysRemaining <= limit)))
+    const open = pool.filter((a) => isOpen(a) && a.hasDeadline && (limit === null || a.daysRemaining <= limit))
     return { upcoming: groupByDay(open), closed: pool.filter((a) => !isOpen(a)) }
   }, [admissions, range, savedOnly])
 

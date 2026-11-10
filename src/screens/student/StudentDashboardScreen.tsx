@@ -70,8 +70,7 @@ export default function StudentDashboardScreen() {
     () => [...open].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, SECTION_LIMIT),
     [open]
   )
-  const openRecommendations = useMemo(() => recommendations.filter(isOpen).slice(0, SECTION_LIMIT), [recommendations])
-  const unread = notifications.filter((n) => !n.read).length
+  const openRecommendations = useMemo(() => recommendations.filter(isOpen), [recommendations])
   const savedCount = stats?.saved_count ?? admissions.filter((a) => a.saved).length
 
   const openProgram = (id: string) => navigation.navigate('ProgramDetail', { id })
@@ -114,12 +113,11 @@ export default function StudentDashboardScreen() {
           onPress={() => goTab('StudentDeadlines')}
         />
         <StatCard
-          icon="bell"
-          label="Unread alerts"
-          value={unread}
-          hint="Notifications"
-          tone={unread > 0 ? colors.danger : colors.primary}
-          onPress={() => goTab('StudentNotifications')}
+          icon="star"
+          label="Recommendations"
+          value={openRecommendations.length}
+          hint="Based on your saved programs"
+          onPress={() => goTab('StudentSearch')}
         />
       </View>
 
@@ -127,7 +125,7 @@ export default function StudentDashboardScreen() {
         {openRecommendations.length === 0 ? (
           <Text style={styles.muted}>Save a few programs and we will suggest similar ones.</Text>
         ) : (
-          openRecommendations.map((admission) => (
+          openRecommendations.slice(0, SECTION_LIMIT).map((admission) => (
             <AdmissionRow
               key={admission.id}
               admission={admission}
