@@ -116,6 +116,7 @@ export interface Admission {
   fee_display?: string;
   location_display?: string | null;
   eligibility_text?: string | null;
+  academic_year?: string | null;
   university_website_url?: string | null;
   admission_portal_url?: string | null;
   source_announcement_url?: string | null;

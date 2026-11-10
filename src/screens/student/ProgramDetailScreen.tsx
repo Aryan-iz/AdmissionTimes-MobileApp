@@ -267,6 +267,8 @@ export default function ProgramDetailScreen() {
           <Fact label="Program type" value={program.programType} />
           <Fact label="Duration" value={program.duration} />
           <Fact label="Study mode" value={program.deliveryMode} />
+          <Fact label="Academic year" value={program.academicYear} />
+          <Fact label="Location" value={program.location} />
         </View>
       </Section>
 

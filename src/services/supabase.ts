@@ -12,6 +12,9 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { config } from '../config/env';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('supabase')
 
 const SECURESTORE_MAX_SAFE_BYTES = 2000;
 const LARGE_VALUE_POINTER_PREFIX = '__ASYNC__:';
@@ -124,28 +127,28 @@ export const getAccessToken = async (): Promise<string | null> => {
         message.includes('invalid refresh') ||
         message.includes('session not found');
       if (isStaleSession) {
-        console.warn('⚠️ [Supabase] No valid session (stale refresh token)');
+        log.warn('No valid session (stale refresh token)');
       } else {
-        console.error('❌ [Supabase] Failed to get session:', error.message);
+        log.error('Failed to get session:', error.message);
       }
       return null;
     }
     
     if (!data.session) {
-      console.warn('⚠️ [Supabase] No active session');
+      log.warn('No active session');
       return null;
     }
     
     const token = data.session.access_token;
     
     if (config.debugApi && __DEV__) {
-      console.log('🔐 [Supabase] Access token retrieved');
-      console.log('  Expires at:', new Date(data.session.expires_at! * 1000).toISOString());
+      log.debug('Access token retrieved');
+      log.debug('  Expires at:', new Date(data.session.expires_at! * 1000).toISOString());
     }
     
     return token;
   } catch (error: any) {
-    console.error('❌ [Supabase] Error getting access token:', error);
+    log.error('Error getting access token:', error);
     return null;
   }
 };
@@ -173,13 +176,13 @@ export const getSupabaseUser = async () => {
     const { data, error } = await supabase.auth.getUser();
     
     if (error) {
-      console.error('❌ [Supabase] Failed to get user:', error.message);
+      log.error('Failed to get user:', error.message);
       return null;
     }
     
     return data.user;
   } catch (error: any) {
-    console.error('❌ [Supabase] Error getting user:', error);
+    log.error('Error getting user:', error);
     return null;
   }
 };
@@ -195,15 +198,15 @@ export const signOutUser = async () => {
     const { error } = await supabase.auth.signOut();
     
     if (error) {
-      console.error('❌ [Supabase] Sign out error:', error.message);
+      log.error('Sign out error:', error.message);
       throw error;
     }
     
     if (config.debugApi && __DEV__) {
-      console.log('✅ [Supabase] User signed out successfully');
+      log.debug('User signed out successfully');
     }
   } catch (error: any) {
-    console.error('❌ [Supabase] Error during sign out:', error);
+    log.error('Error during sign out:', error);
     throw error;
   }
 };

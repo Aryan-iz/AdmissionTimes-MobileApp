@@ -11,6 +11,9 @@
 
 import apiClient from './apiClient';
 import { ApiResponse, StudentDashboard } from './types';
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('dashboardService')
 
 export const dashboardService = {
   /**
@@ -28,7 +31,7 @@ export const dashboardService = {
    * @returns Promise resolving to student dashboard data
    */
   getStudentDashboard: async (): Promise<ApiResponse<StudentDashboard>> => {
-    console.log('📊 [dashboardService] Fetching student dashboard');
+    log.debug('Fetching student dashboard');
     const response = await apiClient.get('/student/dashboard');
     return response.data;
   },

@@ -46,6 +46,39 @@ import { subscribeToStudentNotificationInserts } from './src/realtime/notificati
 import { notificationsService } from './src/services/notificationsService'
 import { toastConfig } from './src/services/toast'
 import { admissionIdOf } from './src/domain/notification'
+import { createLogger } from './src/utils/logger'
+
+const log = createLogger('App')
+
+/**
+ * Notifications shown in the last minute (push and realtime can both deliver
+ * the same one); used to avoid showing a duplicate local notification.
+ */
+const SEEN_WINDOW_MS = 60_000
+const recentlySeenNotifications = new Map<string, number>()
+
+const pruneSeenNotifications = () => {
+  const now = Date.now()
+  recentlySeenNotifications.forEach((seenAt, key) => {
+    if (now - seenAt > SEEN_WINDOW_MS) recentlySeenNotifications.delete(key)
+  })
+}
+
+const markNotificationAsSeen = (notificationId?: string | null) => {
+  if (!notificationId) return
+  pruneSeenNotifications()
+  recentlySeenNotifications.set(notificationId, Date.now())
+}
+
+const hasSeenNotificationRecently = (notificationId?: string | null) => {
+  if (!notificationId) return false
+  pruneSeenNotifications()
+  return recentlySeenNotifications.has(notificationId)
+}
+
+const extractNotificationId = (data: Record<string, unknown>) =>
+  (data.notification_id as string | undefined) || (data.notificationId as string | undefined) || null
+
 
 function syncNavigationRoute(setActiveRouteName: (routeName?: string) => void) {
   const routeName = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined
@@ -63,37 +96,6 @@ function AppNavigationHost() {
   const appState = useRef(AppState.currentState)
   const previousStudentUserIdRef = useRef<string | null>(null)
   const registeredTokenKeyRef = useRef<string | null>(null)
-  const recentSeenNotificationIdsRef = useRef<Map<string, number>>(new Map())
-
-  const pruneSeenNotificationIds = () => {
-    const now = Date.now()
-    const windowMs = 60_000
-    recentSeenNotificationIdsRef.current.forEach((seenAt, key) => {
-      if (now - seenAt > windowMs) {
-        recentSeenNotificationIdsRef.current.delete(key)
-      }
-    })
-  }
-
-  const markNotificationAsSeen = (notificationId?: string | null) => {
-    if (!notificationId) return
-    pruneSeenNotificationIds()
-    recentSeenNotificationIdsRef.current.set(notificationId, Date.now())
-  }
-
-  const hasSeenNotificationRecently = (notificationId?: string | null) => {
-    if (!notificationId) return false
-    pruneSeenNotificationIds()
-    return recentSeenNotificationIdsRef.current.has(notificationId)
-  }
-
-  const extractNotificationId = (data: Record<string, unknown>) => {
-    return (
-      (data.notification_id as string | undefined) ||
-      (data.notificationId as string | undefined) ||
-      null
-    )
-  }
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -124,7 +126,7 @@ function AppNavigationHost() {
           setExpoPushToken(token)
         }
       } catch (error) {
-        console.error('❌ [Push] Initialization failed:', error)
+        log.error('Initialization failed:', error)
       }
     }
 
@@ -168,7 +170,7 @@ function AppNavigationHost() {
         .unregisterPushToken({ expo_push_token: expoPushToken })
         .catch((error) => {
           if (__DEV__) {
-            console.warn('⚠️ [Push] Failed to unregister push token:', error)
+            log.warn('Failed to unregister push token:', error)
           }
         })
       registeredTokenKeyRef.current = null
@@ -195,7 +197,7 @@ function AppNavigationHost() {
       })
       .catch((error) => {
         if (__DEV__) {
-          console.warn('⚠️ [Push] Failed to register push token:', error)
+          log.warn('Failed to register push token:', error)
         }
       })
   }, [expoPushToken, user?.id, user?.role])
@@ -247,7 +249,7 @@ function AppNavigationHost() {
           markNotificationAsSeen(notificationId)
         },
         onError: (status) => {
-          console.warn('⚠️ [Realtime] Notifications channel issue:', status)
+          log.warn('Notifications channel issue:', status)
         },
       })
     }

@@ -17,6 +17,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { authService, supabase, signOutUser, onAuthStateChange } from '../services'
 import { resetStudentSession } from './sessionCleanup'
 import type { User } from '../services/types'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('authStore')
 
 // Re-export types
 export type { SignInData, SignUpData } from '../services/types'
@@ -67,6 +70,8 @@ interface AuthStoreState {
   reset: () => void
 }
 
+// Older app versions stored the profile here; it is only removed now (never
+// read: the session is always re-validated with the backend).
 const STORAGE_KEY = 'admissiontimes.auth.user'
 const AUTH_CHECK_THROTTLE_MS = 15000
 const STUDENT_ONLY_MESSAGE = 'This mobile app currently supports student accounts only.'
@@ -148,14 +153,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       set({ isLoading: true, error: null })
       lastCheckAuthAt = Date.now()
 
-      console.log('🔐 [authStore] Checking authentication...')
+      log.debug('Checking authentication...')
 
       // Check if user has active Supabase session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (sessionError) {
         if (isStaleAuthError(sessionError)) {
-          console.warn('⚠️ [authStore] Stale session cleared (invalid refresh token)')
+          log.warn('Stale session cleared (invalid refresh token)')
           await clearStaleAuthSession(set)
           return
         }
@@ -163,32 +168,29 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
       }
 
       if (session?.access_token) {
-        console.log('🔐 [authStore] Active session found, fetching user data...')
+        log.debug('Active session found, fetching user data...')
         
         // Get current user from backend using JWT
         const response = await authService.getCurrentUser()
         const backendUser = response.data
         const authUser = await assertStudentRole(convertToAuthUser(backendUser))
 
-        console.log('✅ [authStore] User authenticated:', authUser.email)
-
-        // Persist to storage
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))
+        log.debug('User authenticated', { role: authUser.role })
 
         set({ user: authUser, isAuthenticated: true })
       } else {
-        console.log('⚠️ [authStore] No active session')
+        log.debug('No active session')
         set({ user: null, isAuthenticated: false })
         await AsyncStorage.removeItem(STORAGE_KEY)
       }
     } catch (error: any) {
       if (isStaleAuthError(error)) {
-        console.warn('⚠️ [authStore] Stale session cleared during auth check')
+        log.warn('Stale session cleared during auth check')
         await clearStaleAuthSession(set)
         return
       }
 
-      console.error('❌ [authStore] Auth check failed:', error)
+      log.error('Auth check failed:', error)
 
       const isNetworkError =
         error?.code === 'ECONNABORTED' ||
@@ -225,7 +227,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     try {
       set({ isLoading: true, error: null })
 
-      console.log('🔐 [authStore] Signing in:', data.email)
+      log.debug('Signing in')
 
       const email = data.email.trim().toLowerCase()
       const password = data.password
@@ -243,17 +245,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         throw supabaseError
       }
 
-      console.log('✅ [authStore] Supabase authentication successful')
+      log.debug('Supabase authentication successful')
 
       // Fetch user from backend
       const response = await authService.getCurrentUser()
       const backendUser = response.data
       const authUser = await assertStudentRole(convertToAuthUser(backendUser))
 
-      console.log('✅ [authStore] User data received:', authUser.email, '- Role:', authUser.role)
-
-      // Persist to storage
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))
+      log.debug('User data received', { role: authUser.role })
 
       set({ user: authUser, isAuthenticated: true, error: null })
 
@@ -261,7 +260,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         options.onSuccess(authUser)
       }
     } catch (error: any) {
-      console.error('❌ [authStore] Sign in failed:', error)
+      log.error('Sign in failed:', error)
       const errorMsg = error.message || error.response?.data?.message || 'Failed to sign in. Please check your credentials.'
       set({ error: errorMsg, isLoading: false })
       
@@ -284,7 +283,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         throw new Error(STUDENT_ONLY_MESSAGE)
       }
 
-      console.log('🔐 [authStore] Signing up user:', data.email)
+      log.debug('Signing up user')
 
       const email = data.email.trim().toLowerCase()
       const password = data.password
@@ -310,7 +309,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         throw new Error('Failed to create account in Supabase')
       }
 
-      console.log('✅ [authStore] Supabase user created:', authUserId)
+      log.debug('Supabase user created:', authUserId)
 
       // Create user in database  
       try {
@@ -321,9 +320,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
           user_type: 'student',
           auth_user_id: authUserId,
         })
-        console.log('✅ [authStore] User created in database')
+        log.debug('User created in database')
       } catch (backendError: any) {
-        console.warn('⚠️ [authStore] Database user creation failed (JWT middleware will auto-create):', backendError)
+        log.warn('Database user creation failed (JWT middleware will auto-create):', backendError)
         // JWT middleware will auto-create the user on first authenticated request
       }
 
@@ -331,7 +330,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
         options.onSuccess()
       }
     } catch (error: any) {
-      console.error('❌ [authStore] Sign up failed:', error)
+      log.error('Sign up failed:', error)
       const errorMsg = error.message || error.response?.data?.message || 'Failed to create account'
       set({ error: errorMsg, isLoading: false })
       
@@ -350,7 +349,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     try {
       set({ isLoading: true })
 
-      console.log('🔐 [authStore] Signing out user...')
+      log.debug('Signing out user...')
 
       // Sign out from Supabase
       await signOutUser()
@@ -362,13 +361,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
 
       set({ user: null, isAuthenticated: false, error: null })
 
-      console.log('✅ [authStore] User signed out successfully')
+      log.debug('User signed out successfully')
 
       if (options?.onSuccess) {
         options.onSuccess()
       }
     } catch (error) {
-      console.error('❌ [authStore] Sign out failed:', error)
+      log.error('Sign out failed:', error)
     } finally {
       set({ isLoading: false })
     }
@@ -377,28 +376,22 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
   // Set User
   setUser: (user) => {
     set({ user, isAuthenticated: !!user })
-    if (user) {
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    } else {
-      AsyncStorage.removeItem(STORAGE_KEY)
-    }
+    if (!user) void AsyncStorage.removeItem(STORAGE_KEY)
   },
 
   // Refresh User (fetch latest user data from backend)
   refreshUser: async () => {
     try {
-      console.log('🔄 [authStore] Refreshing user data...')
+      log.debug('Refreshing user data...')
       
       const response = await authService.getCurrentUser()
       const backendUser = response.data
       const authUser = await assertStudentRole(convertToAuthUser(backendUser))
-
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))
       set({ user: authUser })
 
-      console.log('✅ [authStore] User data refreshed')
+      log.debug('User data refreshed')
     } catch (error) {
-      console.error('❌ [authStore] Failed to refresh user:', error)
+      log.error('Failed to refresh user:', error)
     }
   },
 
@@ -414,7 +407,7 @@ if (authStoreGlobal.__admissionTimesAuthStateUnsubscribe) {
 }
 
 authStoreGlobal.__admissionTimesAuthStateUnsubscribe = onAuthStateChange((event) => {
-  console.log('🔐 [authStore] Supabase auth state changed:', event)
+  log.debug('Supabase auth state changed:', event)
 
   const now = Date.now()
   const shouldSkipThrottledCheck = now - lastCheckAuthAt < AUTH_CHECK_THROTTLE_MS

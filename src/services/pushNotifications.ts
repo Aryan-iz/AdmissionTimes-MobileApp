@@ -1,6 +1,9 @@
 import { Platform } from 'react-native'
 import Constants from 'expo-constants'
 import type { Notification, NotificationResponse } from 'expo-notifications'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('pushNotifications')
 
 type NotificationsModule = typeof import('expo-notifications')
 
@@ -14,7 +17,7 @@ const warnPushUnsupportedOnce = (reason: string) => {
   }
 
   pushUnsupportedWarned = true
-  console.warn(`⚠️ [Push] Push notifications unavailable in this runtime (${reason}).`)
+  log.warn(`Push notifications unavailable in this runtime (${reason}).`)
 }
 
 const warnPushConfigurationOnce = (message: string) => {
@@ -23,7 +26,7 @@ const warnPushConfigurationOnce = (message: string) => {
   }
 
   pushConfigurationWarned = true
-  console.warn(`⚠️ [Push] ${message}`)
+  log.warn(`${message}`)
 }
 
 const isAndroidFirebaseNotInitializedError = (message: string): boolean => {
@@ -139,7 +142,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
   const Constants = await import('expo-constants')
 
   if (!Device.isDevice) {
-    console.warn('⚠️ [Push] Push notifications require a physical device')
+    log.warn('Push notifications require a physical device')
     return null
   }
 
@@ -152,7 +155,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
   }
 
   if (finalStatus !== 'granted') {
-    console.warn('⚠️ [Push] Notification permission not granted')
+    log.warn('Notification permission not granted')
     return null
   }
 
@@ -161,7 +164,7 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
     Constants.default.easConfig?.projectId
 
   if (!projectId) {
-    console.warn('⚠️ [Push] Missing EAS project ID, cannot fetch Expo push token')
+    log.warn('Missing EAS project ID, cannot fetch Expo push token')
     return null
   }
 
