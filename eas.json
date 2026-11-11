@@ -9,10 +9,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "API_BASE_URL": "https://admissiontimes-api.vercel.app/api/v1"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "API_BASE_URL": "https://admissiontimes-api.vercel.app/api/v1"
+      }
     }
   },
   "submit": {

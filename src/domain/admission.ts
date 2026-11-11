@@ -46,6 +46,8 @@ export interface StudentAdmission {
   announcementUrl: string | null
   /** Programs listed by a multi-program announcement (scraped). */
   programsOffered: string[]
+  /** Scraped programs: the announcement they were listed in. */
+  sourceAnnouncementTitle: string | null
 
   source: DataSource
   updatedAt: string
@@ -107,6 +109,7 @@ export const toStudentAdmission = (admission: Admission): StudentAdmission => {
     portalUrl: text(admission.admission_portal_url),
     announcementUrl: text(admission.source_announcement_url),
     programsOffered: Array.isArray(admission.programs_offered) ? admission.programs_offered : [],
+    sourceAnnouncementTitle: text(admission.source_announcement_title),
 
     source: admission.source ?? (String(admission.data_origin || '').toLowerCase() === 'scraper' ? 'scraper' : 'university'),
     updatedAt: admission.updated_at,
